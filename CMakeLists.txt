@@ -9,7 +9,7 @@ project(stainkit
 # Project-wide options
 # ----------------------------------------------------------------------------
 option(STK_BUILD_TESTS       "Build unit tests (GoogleTest)"            ON)
-option(STK_BUILD_PYTHON      "Build Python bindings (pybind11)"          ON)
+option(STK_BUILD_PYTHON      "Build Python bindings (pybind11)"         OFF)
 option(STK_BUILD_BENCHMARKS  "Build CPU/GPU benchmark executables"       ON)
 option(STK_BUILD_DOCS        "Build documentation (Doxygen, optional)"   OFF)
 option(STK_USE_NPP           "Use NVIDIA NPP primitives where possible"  OFF)
@@ -161,6 +161,12 @@ endif()
 # Python bindings (pybind11)
 # ----------------------------------------------------------------------------
 if(STK_BUILD_PYTHON)
+    # pybind11_add_module is only available when Python has been found
+    # *before* the pybind11 CMake helpers are pulled in. We pre-locate
+    # the interpreter so the add_subdirectory() call inside
+    # FetchContent_MakeAvailable() registers the pybind11 functions.
+    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+
     include(FetchContent)
     set(STK_PYBIND11_TAG v2.11.1)
     FetchContent_Declare(
@@ -169,10 +175,9 @@ if(STK_BUILD_PYTHON)
         GIT_TAG        ${STK_PYBIND11_TAG}
         GIT_SHALLOW    TRUE
     )
-    set(PYBIND11_NOPYTHON ON CACHE BOOL "" FORCE)
+    set(PYBIND11_NOPYTHON OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(pybind11)
 
-    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
     pybind11_add_module(gpustain_py src/bindings/bindings.cpp
     )
     target_link_libraries(gpustain_py PRIVATE stainkit::core stainkit::cuda)
