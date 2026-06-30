@@ -33,14 +33,6 @@ namespace stainkit {
 class CudaContext {
  public:
   CudaContext() {
-    // Force the CUDA driver to initialise before we query devices.
-    // Without this, the first cudaGetDeviceCount call on a fresh
-    // process can race with the driver init and SEGFAULT.
-    {
-      cudaError_t init_err = cudaFree(0);
-      (void)init_err;
-    }
-
     int device_count = 0;
     cudaError_t err    = cudaGetDeviceCount(&device_count);
     if (err != cudaSuccess || device_count == 0) {
