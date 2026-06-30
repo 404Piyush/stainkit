@@ -21,7 +21,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}"
 
 BUILD_TYPE="Release"
-BUILD_PYTHON=ON
+# Python bindings default to OFF so the build finishes quickly on
+# resource-constrained environments (Google Colab, CI containers).
+# Pass --python to opt in.
+BUILD_PYTHON=OFF
 BUILD_TESTS=ON
 CUDA_ARCHS="75;86;89"
 EXTRA_CMAKE_ARGS=()
@@ -29,6 +32,7 @@ EXTRA_CMAKE_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --debug)              BUILD_TYPE="Debug"; shift ;;
+    --python)             BUILD_PYTHON=ON; shift ;;
     --no-python)          BUILD_PYTHON=OFF; shift ;;
     --no-tests)           BUILD_TESTS=OFF; shift ;;
     --cuda-arch=*)        CUDA_ARCHS="${1#*=}"; shift ;;

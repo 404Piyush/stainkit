@@ -48,8 +48,14 @@ endif()
 # Global compile/link flags
 # ----------------------------------------------------------------------------
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wnon-virtual-dtor)
+# Apply -Xcompiler=-Wall,-Wextra,-Wpedantic to CUDA translation units only.
+# The previous global add_compile_options(-Xcompiler=...) leaked into
+# C++ TUs and made the host c++ driver reject the flag. The
+# $<COMPILE_LANGUAGE:CUDA> generator expression scopes the option to
+# .cu files only.
 if(CMAKE_CUDA_COMPILER)
-    add_compile_options(-Xcompiler=-Wall,-Wextra,-Wpedantic)
+    add_compile_options(
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-Wall,-Wextra,-Wpedantic>")
 endif()
 
 # ----------------------------------------------------------------------------
