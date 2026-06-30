@@ -191,36 +191,32 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
 
 float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
-                         const StainTarget& target, StainMatrix& estimated,
+                         const float* d_stain_matrix_inv,
+                         const float* d_target_conc,
+                         StainMatrix& estimated,
                          float* d_out_rgb, void* stream) {
   std::fprintf(stderr, "[NS] enter\n"); std::fflush(stderr);
-  if (d_in_rgb == nullptr || d_out_rgb == nullptr) {
+  if (d_in_rgb == nullptr || d_out_rgb == nullptr ||
+      d_stain_matrix_inv == nullptr || d_target_conc == nullptr) {
     throw std::invalid_argument("NormaliseStainFull: null device pointer(s)");
   }
   cudaStream_t s = AsStream(stream);
   std::fprintf(stderr, "[NS] got stream\n"); std::fflush(stderr);
 
-  // 1. Deconvolve the input into the (H, E) OD channels.
-  //    We reuse the same 3x3 stain matrix as the target basis for the
-  //    initial deconvolution; the estimated basis from stage 2 only
-  //    affects the *target* matrix in the reconstruction.
-  std::array<float, 9> stain = {
-      target.matrix.values[0], target.matrix.values[1], target.matrix.values[2],
-      target.matrix.values[3], target.matrix.values[4], target.matrix.values[5],
-      0.0f, 0.0f, 1.0f,
-  };
-  // Allocate a scratch OD buffer (2 channels).
+  // 1. Deconvolve the input into the (H, E) OD channels using the *target*
+  //    matrix. The 6-float stain matrix is passed in row-major RGB order.
+  StainMatrix target_matrix{};
+  for (int i = 0; i < 6; ++i) target_matrix.values[i] = d_stain_matrix_inv[i];
+
   const std::size_t npix    = width * height;
   const std::size_t od_size = npix * 2 * sizeof(float);
   float*            d_od    = nullptr;
   std::fprintf(stderr, "[NS] cudaMalloc d_od\n"); std::fflush(stderr);
   cudaMalloc(&d_od, od_size);
   std::fprintf(stderr, "[NS] ColorDeconvolveRgb\n"); std::fflush(stderr);
-  ColorDeconvolveRgb(d_in_rgb, width, height, target.matrix, d_od, 2, 1, &s);
+  ColorDeconvolveRgb(d_in_rgb, width, height, target_matrix, d_od, 2, 1, &s);
   std::fprintf(stderr, "[NS] ColorDeconv ok\n"); std::fflush(stderr);
-  (void)stain;  // (kept for documentation; basis is in constant memory)
 
-  // 2. Compute (angle, magnitude) per pixel.
   float* d_angles = nullptr;
   float* d_mags   = nullptr;
   cudaMalloc(&d_angles, npix * sizeof(float));
@@ -229,12 +225,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, &s);
   std::fprintf(stderr, "[NS] ComputeAngles ok\n"); std::fflush(stderr);
 
-  // 3. Copy the angles back to the host, build the histogram and estimate
-  //    the stain basis. For the *first* iteration of the algorithm we use
-  //    the user-supplied target matrix; on subsequent iterations the
-  //    estimated basis would replace it. We keep it simple here and
-  //    always reuse the target.
-std::vector<float> h_angles(npix);
+  std::vector<float> h_angles(npix);
   std::fprintf(stderr, "[NS] memcpy angles\n"); std::fflush(stderr);
   cudaMemcpyAsync(h_angles.data(), d_angles, npix * sizeof(float),
                   cudaMemcpyDeviceToHost, s);
@@ -245,16 +236,22 @@ std::vector<float> h_angles(npix);
   std::fprintf(stderr, "[NS] histogram\n"); std::fflush(stderr);
   estimated       = EstimateStainMatrixFromAngles(
       hist, npix, params.stain_percentile_low, params.stain_percentile_high,
-      target.matrix);
+      target_matrix);
   std::fprintf(stderr, "[NS] estimated\n"); std::fflush(stderr);
 
-  // 4. Reconstruct using the target matrix + concentrations.
+  // 4. Reconstruct using the target matrix + concentrations. The
+  //    StainTarget is rebuilt locally so we don't pass std::string
+  //    across the g++/nvcc ABI boundary.
   cudaEvent_t start{};
   cudaEvent_t stop{};
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
   std::fprintf(stderr, "[NS] Reconstruct\n"); std::fflush(stderr);
+  StainTarget target{};
+  target.matrix = target_matrix;
+  target.target_he_concentrations = {d_target_conc[0], d_target_conc[1],
+                                      d_target_conc[2]};
   ReconstructRgbFromStain(d_od, width, height, target, d_out_rgb, &s);
   std::fprintf(stderr, "[NS] Reconstruct ok\n"); std::fflush(stderr);
   cudaEventRecord(stop, s);

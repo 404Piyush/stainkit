@@ -389,11 +389,34 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
     ScopedEvent ev(stream);
     std::fprintf(stderr, "[RunWithCpuBaseline] normalise: ScopedEvent ok\n"); std::fflush(stderr);
     StainMatrix est = target.matrix;
+    // Upload the stain matrix and target concentrations to device so
+    // we can pass raw float pointers to NormaliseStainFull. This avoids
+    // a g++/nvcc ABI mismatch on StainTarget (which contains std::string).
+    std::array<float, 6> h_matrix_inv{};
+    for (int i = 0; i < 6; ++i) h_matrix_inv[i] = target.matrix.values[i];
+    float* d_matrix_inv = nullptr;
+    cudaMalloc(&d_matrix_inv, sizeof(float) * 6);
+    cudaMemcpyAsync(d_matrix_inv, h_matrix_inv.data(), sizeof(float) * 6,
+                    cudaMemcpyHostToDevice, stream);
+    std::array<float, 3> h_conc = {
+        target.target_he_concentrations[0],
+        target.target_he_concentrations[1],
+        target.target_he_concentrations[2],
+    };
+    float* d_conc = nullptr;
+    cudaMalloc(&d_conc, sizeof(float) * 3);
+    cudaMemcpyAsync(d_conc, h_conc.data(), sizeof(float) * 3,
+                    cudaMemcpyHostToDevice, stream);
     std::fprintf(stderr, "[RunWithCpuBaseline] normalise: calling NormaliseStainFull\n"); std::fflush(stderr);
     kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w,
-                                h, params, target, est,
+                                h, params,
+                                static_cast<const float*>(d_matrix_inv),
+                                static_cast<const float*>(d_conc),
+                                est,
                                 static_cast<float*>(d_rgb_out.ptr), stream);
     std::fprintf(stderr, "[RunWithCpuBaseline] normalise: NormaliseStainFull ok\n"); std::fflush(stderr);
+    cudaFree(d_matrix_inv);
+    cudaFree(d_conc);
     result.estimated_matrix = est;
     result.timing.normalise_ms = ev.elapsed_ms;
   }
