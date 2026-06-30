@@ -105,12 +105,14 @@ CMAKE_INVOCATION+=("..")
 
 "${CMAKE_INVOCATION[@]}"
 
-# Wipe ALL build artefacts so a `git pull` followed by re-install forces
-# a full recompile. Otherwise a `make` no-op can mask new code if the
-# previous build cached an intermediate object file.
-rm -rf CMakeFiles CMakeCache.txt cmake_install.cmake Makefile \
-       install_manifest.txt _deps stainkit_core.dir stainkit_cuda.dir \
-       stainkit.dir stainkit_bench.dir bin lib
+# Wipe per-target build directories so a `git pull` followed by re-install
+# forces a full recompile of any source that changed. We deliberately do
+# NOT remove the top-level Makefile or CMakeCache here - those are needed
+# by the `make` invocation below. The earlier `rm -rf CMakeCache.txt
+# CMakeFiles CMakeUserPresets.json` already cleared stale cache before
+# the cmake step.
+rm -rf CMakeFiles stainkit_core.dir stainkit_cuda.dir \
+       stainkit.dir stainkit_bench.dir bin lib _deps
 
 # Use all available cores.
 NPROC="$(command -v nproc >/dev/null && nproc || echo 4)"
