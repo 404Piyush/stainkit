@@ -168,11 +168,20 @@ struct ScopedEvent {
     cudaEventRecord(start, stream);
   }
   ~ScopedEvent() {
-    cudaEventRecord(stop, stream);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed_ms, start, stop);
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
+    std::fprintf(stderr, "[~ScopedEvent] entry stream=%p\n", (void*)stream); std::fflush(stderr);
+    cudaError_t e1 = cudaEventRecord(stop, stream);
+    std::fprintf(stderr, "[~ScopedEvent] EventRecord -> %d (%s)\n", (int)e1, cudaGetErrorString(e1)); std::fflush(stderr);
+    cudaError_t e2 = cudaEventSynchronize(stop);
+    std::fprintf(stderr, "[~ScopedEvent] EventSync -> %d (%s)\n", (int)e2, cudaGetErrorString(e2)); std::fflush(stderr);
+    cudaError_t e3 = cudaEventElapsedTime(&elapsed_ms, start, stop);
+    std::fprintf(stderr, "[~ScopedEvent] ElapsedTime -> %d (%s), ms=%f\n",
+                 (int)e3, cudaGetErrorString(e3), elapsed_ms); std::fflush(stderr);
+    cudaError_t e4 = cudaEventDestroy(start);
+    std::fprintf(stderr, "[~ScopedEvent] Destroy start -> %d (%s)\n",
+                 (int)e4, cudaGetErrorString(e4)); std::fflush(stderr);
+    cudaError_t e5 = cudaEventDestroy(stop);
+    std::fprintf(stderr, "[~ScopedEvent] Destroy stop -> %d (%s)\n",
+                 (int)e5, cudaGetErrorString(e5)); std::fflush(stderr);
   }
   ScopedEvent(const ScopedEvent&)            = delete;
   ScopedEvent& operator=(const ScopedEvent&) = delete;
