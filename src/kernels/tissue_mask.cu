@@ -48,7 +48,12 @@ __global__ void HistogramKernel(const float* __restrict__ d_lum, int* __restrict
   const std::size_t idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x +
                           threadIdx.x;
   if (idx < npix) {
-    int bin = static_cast<int>(std::clamp(d_lum[idx] * 255.0f, 0.0f, 255.0f));
+    // Manual clamp: std::clamp is __host__ constexpr in C++17 and cannot
+    // be called from a __global__ function without --expt-relaxed-constexpr.
+    float v   = d_lum[idx] * 255.0f;
+    if (v < 0.0f)  v = 0.0f;
+    if (v > 255.0f) v = 255.0f;
+    const int bin = static_cast<int>(v);
     atomicAdd(&s_hist[bin], 1u);
   }
   __syncthreads();
