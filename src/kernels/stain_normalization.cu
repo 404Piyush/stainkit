@@ -191,22 +191,42 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
 
 float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
-                         const float* d_stain_matrix_inv,
-                         const float* d_target_conc,
+                         const float* h_stain_matrix_inv,
+                         const float* h_target_conc,
                          StainMatrix& estimated,
                          float* d_out_rgb, void* stream) {
   std::fprintf(stderr, "[NS] enter\n"); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_rgb == nullptr ||
-      d_stain_matrix_inv == nullptr || d_target_conc == nullptr) {
-    throw std::invalid_argument("NormaliseStainFull: null device pointer(s)");
+      h_stain_matrix_inv == nullptr || h_target_conc == nullptr) {
+    throw std::invalid_argument("NormaliseStainFull: null host/device pointer(s)");
   }
   cudaStream_t s = AsStream(stream);
   std::fprintf(stderr, "[NS] got stream\n"); std::fflush(stderr);
 
-  // 1. Deconvolve the input into the (H, E) OD channels using the *target*
-  //    matrix. The 6-float stain matrix is passed in row-major RGB order.
+  // 1. Copy the host-resident stain matrix and target concentrations to
+  //    device memory. This is the only piece of data we need to upload
+  //    per-image (the rest is already on the device). The upload is on
+  //    the same stream as everything else so it serialises naturally.
+  std::array<float, 6> h_matrix_inv = {
+      h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
+      h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
+  };
+  std::array<float, 3> h_conc = {
+      h_target_conc[0], h_target_conc[1], h_target_conc[2],
+  };
+  float* d_matrix_inv = nullptr;
+  float* d_conc       = nullptr;
+  cudaMalloc(&d_matrix_inv, sizeof(float) * 6);
+  cudaMalloc(&d_conc,       sizeof(float) * 3);
+  cudaMemcpyAsync(d_matrix_inv, h_matrix_inv.data(), sizeof(float) * 6,
+                  cudaMemcpyHostToDevice, s);
+  cudaMemcpyAsync(d_conc,       h_conc.data(),       sizeof(float) * 3,
+                  cudaMemcpyHostToDevice, s);
+
+  // 2. Deconvolve the input into the (H, E) OD channels using the *target*
+  //    matrix.
   StainMatrix target_matrix{};
-  for (int i = 0; i < 6; ++i) target_matrix.values[i] = d_stain_matrix_inv[i];
+  for (int i = 0; i < 6; ++i) target_matrix.values[i] = h_matrix_inv[i];
 
   const std::size_t npix    = width * height;
   const std::size_t od_size = npix * 2 * sizeof(float);
@@ -239,20 +259,29 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
       target_matrix);
   std::fprintf(stderr, "[NS] estimated\n"); std::fflush(stderr);
 
-  // 4. Reconstruct using the target matrix + concentrations. The
-  //    StainTarget is rebuilt locally so we don't pass std::string
-  //    across the g++/nvcc ABI boundary.
+  // 3. Reconstruct using the device-resident target matrix and concentrations.
   cudaEvent_t start{};
   cudaEvent_t stop{};
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
   std::fprintf(stderr, "[NS] Reconstruct\n"); std::fflush(stderr);
-  StainTarget target{};
-  target.matrix = target_matrix;
-  target.target_he_concentrations = {d_target_conc[0], d_target_conc[1],
-                                      d_target_conc[2]};
-  ReconstructRgbFromStain(d_od, width, height, target, d_out_rgb, &s);
+  // ReconstructRgbFromStain expects d_target_matrix (9 floats) and
+  // d_target_conc (3 floats). We have the matrix already; pad with the
+  // residual column being the cross product (or just identity) - here we
+  // use [0,0,1] for the residual since the kernel only reads cols 0 and 1.
+  std::array<float, 9> d_target_matrix_full = {
+      d_matrix_inv[0], d_matrix_inv[1], d_matrix_inv[2],
+      d_matrix_inv[3], d_matrix_inv[4], d_matrix_inv[5],
+      0.0f, 0.0f, 1.0f,
+  };
+  float* d_target_matrix_full_dev = nullptr;
+  cudaMalloc(&d_target_matrix_full_dev, sizeof(float) * 9);
+  cudaMemcpyAsync(d_target_matrix_full_dev, d_target_matrix_full.data(),
+                  sizeof(float) * 9, cudaMemcpyHostToDevice, s);
+  cudaStreamSynchronize(s);
+  ReconstructKernel<<<(npix + 255) / 256, 256, 0, s>>>(
+      d_od, d_target_matrix_full_dev, d_conc, d_out_rgb, npix);
   std::fprintf(stderr, "[NS] Reconstruct ok\n"); std::fflush(stderr);
   cudaEventRecord(stop, s);
   cudaEventSynchronize(stop);
@@ -264,6 +293,9 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaFree(d_angles);
   cudaFree(d_mags);
   cudaFree(d_od);
+  cudaFree(d_matrix_inv);
+  cudaFree(d_conc);
+  cudaFree(d_target_matrix_full_dev);
   std::fprintf(stderr, "[NS] done\n"); std::fflush(stderr);
   return ms;
 }

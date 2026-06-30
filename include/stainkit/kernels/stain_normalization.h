@@ -66,16 +66,17 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
 // Useful when the caller has already deconvolved and just wants to swap
 // to a target basis. Internally synchronises on the supplied stream.
 //
-// `d_stain_matrix_inv` must be a 6-float array (H_r, H_g, H_b, E_r, E_g, E_b).
-// `d_target_conc` must be a 3-float array (H concentration, E concentration,
-// residual). They are passed as raw device pointers to keep the function's
-// ABI trivially callable across g++/nvcc (StainTarget contains std::string
-// and would otherwise ABI-mismatch when the caller is compiled by g++ and the
-// callee by nvcc).
+// `h_stain_matrix_inv` is a HOST pointer to a 6-float array
+// (H_r, H_g, H_b, E_r, E_g, E_b).
+// `h_target_conc` is a HOST pointer to a 3-float array (H concentration,
+// E concentration, residual).
+// They are uploaded to device internally so the g++/nvcc ABI boundary
+// only carries trivially-copyable float pointers (StainTarget contains
+// std::string and would otherwise ABI-mismatch).
 float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
-                         const float* d_stain_matrix_inv,
-                         const float* d_target_conc,
+                         const float* h_stain_matrix_inv,
+                         const float* h_target_conc,
                          StainMatrix& estimated,
                          float* d_out_rgb, void* stream = nullptr);
 
