@@ -76,7 +76,9 @@ add_library(stb_image INTERFACE)
 target_include_directories(stb_image INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb>
 )
-target_compile_definitions(stb_image INTERFACE STB_IMAGE_IMPLEMENTATION=0)
+# We let io.cpp define STB_IMAGE_IMPLEMENTATION / STB_IMAGE_WRITE_IMPLEMENTATION
+# itself (single translation unit rule for the stb libraries). The interface
+# library must NOT pre-define them or we get redefinition warnings.
 add_library(stainkit::stb_image ALIAS stb_image)
 
 # ----------------------------------------------------------------------------
@@ -85,7 +87,6 @@ add_library(stainkit::stb_image ALIAS stb_image)
 add_library(stainkit_core
     src/types.cpp
     src/io.cpp
-    src/pipeline.cpp
     src/cpu_reference.cpp
 )
 add_library(stainkit::core ALIAS stainkit_core)
@@ -103,6 +104,7 @@ target_link_libraries(stainkit_core
 # CUDA library — kernels + device-side glue
 # ----------------------------------------------------------------------------
 set(STK_KERNEL_SOURCES
+    src/pipeline.cpp
     src/kernels/color_deconvolution.cu
     src/kernels/stain_normalization.cu
     src/kernels/tissue_mask.cu

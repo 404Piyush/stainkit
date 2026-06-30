@@ -40,12 +40,6 @@ std::string ToLower(std::string s) {
   return s;
 }
 
-bool HasExtension(const std::filesystem::path& p,
-                  std::string_view allowed) {
-  std::string ext = ToLower(p.extension().string());
-  return ext == allowed;
-}
-
 }  // namespace
 
 bool IsSupportedImage(const std::filesystem::path& path) {
