@@ -383,15 +383,21 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   std::fprintf(stderr, "[RunWithCpuBaseline] deconvolve done\n"); std::fflush(stderr);
 
   // -- Macenko normalise (estimated basis + target reconstruction) --
+  std::fprintf(stderr, "[RunWithCpuBaseline] entering normalise\n"); std::fflush(stderr);
   {
+    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: creating ScopedEvent\n"); std::fflush(stderr);
     ScopedEvent ev(stream);
+    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: ScopedEvent ok\n"); std::fflush(stderr);
     StainMatrix est = target.matrix;
+    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: calling NormaliseStainFull\n"); std::fflush(stderr);
     kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w,
                                 h, params, target, est,
                                 static_cast<float*>(d_rgb_out.ptr), stream);
+    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: NormaliseStainFull ok\n"); std::fflush(stderr);
     result.estimated_matrix = est;
     result.timing.normalise_ms = ev.elapsed_ms;
   }
+  std::fprintf(stderr, "[RunWithCpuBaseline] normalise done\n"); std::fflush(stderr);
 
   // -- Tissue mask --
   if (params.compute_tissue_mask) {
