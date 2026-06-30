@@ -340,10 +340,14 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   DeviceBuffer d_rgb_out(rgb_sz);
   std::fprintf(stderr, "[RunWithCpuBaseline] d_rgb_out ok\n"); std::fflush(stderr);
   DeviceBuffer d_stain_od(od_sz);
+  std::fprintf(stderr, "[RunWithCpuBaseline] d_stain_od ok\n"); std::fflush(stderr);
   DeviceBuffer d_lum(lum_sz);
+  std::fprintf(stderr, "[RunWithCpuBaseline] d_lum ok\n"); std::fflush(stderr);
   DeviceBuffer d_mask(mask_sz);
+  std::fprintf(stderr, "[RunWithCpuBaseline] d_mask ok\n"); std::fflush(stderr);
 
   cudaStream_t stream = ctx_->Stream(0);
+  std::fprintf(stderr, "[RunWithCpuBaseline] got stream=%p\n", (void*)stream); std::fflush(stderr);
 
   {
     ScopedEvent ev(stream);
