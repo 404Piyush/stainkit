@@ -244,10 +244,16 @@ int main(int argc, char** argv) {
     // between the build-time CUDA runtime (e.g. 12.8) and the host's CUDA
     // driver (e.g. 13.0) doesn't terminate the whole process. We catch
     // the segfault, log it, and fall back to the CPU reference path.
+    std::fprintf(stderr, "[main] about to call MakeOrFallback\n"); std::fflush(stderr);
     pipeline = stainkit::Pipeline::MakeOrFallback();
+    std::fprintf(stderr, "[main] MakeOrFallback returned, pipeline=%p\n",
+                 static_cast<void*>(pipeline.get())); std::fflush(stderr);
   }
   if (pipeline) {
-    std::cout << "stainkit: using GPU: " << pipeline->DeviceName() << "\n";
+    std::fprintf(stderr, "[main] about to call DeviceName\n"); std::fflush(stderr);
+    std::string devname = pipeline->DeviceName();
+    std::fprintf(stderr, "[main] DeviceName returned: %s\n", devname.c_str()); std::fflush(stderr);
+    std::cout << "stainkit: using GPU: " << devname << "\n";
   } else {
     std::cout << "stainkit: CUDA unavailable — falling back to CPU "
                  "reference implementation\n";
