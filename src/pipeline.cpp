@@ -350,10 +350,16 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   std::fprintf(stderr, "[RunWithCpuBaseline] got stream=%p\n", (void*)stream); std::fflush(stderr);
 
   {
+    std::fprintf(stderr, "[RunWithCpuBaseline] creating ScopedEvent...\n"); std::fflush(stderr);
     ScopedEvent ev(stream);
-    cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz,
-                    cudaMemcpyHostToDevice, stream);
+    std::fprintf(stderr, "[RunWithCpuBaseline] ScopedEvent ok\n"); std::fflush(stderr);
+    cudaError_t me = cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz,
+                                     cudaMemcpyHostToDevice, stream);
+    std::fprintf(stderr, "[RunWithCpuBaseline] cudaMemcpyAsync -> %d (%s)\n",
+                 (int)me, cudaGetErrorString(me)); std::fflush(stderr);
     result.timing.copy_h2d_ms = ev.elapsed_ms;
+    std::fprintf(stderr, "[RunWithCpuBaseline] copy_h2d_ms = %f\n",
+                 ev.elapsed_ms); std::fflush(stderr);
   }
 
   // -- Deconvolve (RGB -> OD) --
