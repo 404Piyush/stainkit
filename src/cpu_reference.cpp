@@ -60,10 +60,6 @@ float3 MatVec(const std::array<float, 9>& m, const float3& v) {
           m[6] * v[0] + m[7] * v[1] + m[8] * v[2]};
 }
 
-float Luma(float3 c) {
-  return 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
-}
-
 }  // namespace
 
 Image CpuReferenceStainNormalise(const Image& input,
