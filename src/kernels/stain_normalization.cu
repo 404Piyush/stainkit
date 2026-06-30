@@ -255,7 +255,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   ReconstructRgbFromStain(d_od, width, height, target, d_out_rgb, &s);
   std::fprintf(stderr, "[NS] Reconstruct ok\n"); std::fflush(stderr);
   cudaEventRecord(stop, s);
-  cudaStreamSynchronize(stop);
+  cudaEventSynchronize(stop);
   float ms = 0.0f;
   cudaEventElapsedTime(&ms, start, stop);
   cudaEventDestroy(start);
