@@ -254,10 +254,13 @@ int main(int argc, char** argv) {
     std::string devname = pipeline->DeviceName();
     std::fprintf(stderr, "[main] DeviceName returned: %s\n", devname.c_str()); std::fflush(stderr);
     std::cout << "stainkit: using GPU: " << devname << "\n";
+    std::fprintf(stderr, "[main] printed GPU line\n"); std::fflush(stderr);
+    std::cout.flush();
   } else {
     std::cout << "stainkit: CUDA unavailable — falling back to CPU "
                  "reference implementation\n";
   }
+  std::fprintf(stderr, "[main] past if(pipeline) check\n"); std::fflush(stderr);
 
   // -- Process loop --
   std::vector<stainkit::BenchmarkRecord> bench;
