@@ -372,6 +372,7 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   }
 
   // -- Deconvolve (RGB -> OD) --
+  std::fprintf(stderr, "[RunWithCpuBaseline] entering deconvolve\n"); std::fflush(stderr);
   {
     ScopedEvent ev(stream);
     kernels::ColorDeconvolveRgb(
@@ -379,6 +380,7 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
         static_cast<float*>(d_stain_od.ptr), 2, 1, stream);
     result.timing.deconvolve_ms = ev.elapsed_ms;
   }
+  std::fprintf(stderr, "[RunWithCpuBaseline] deconvolve done\n"); std::fflush(stderr);
 
   // -- Macenko normalise (estimated basis + target reconstruction) --
   {
