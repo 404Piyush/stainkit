@@ -33,22 +33,53 @@ namespace stainkit {
 class CudaContext {
  public:
   CudaContext() {
+    // Force the CUDA driver to initialise before we query devices.
+    // Without this, the first cudaGetDeviceCount call on a fresh
+    // process can race with the driver init and SEGFAULT.
+    {
+      cudaError_t init_err = cudaFree(0);
+      (void)init_err;
+    }
+
     int device_count = 0;
-    cudaError_t err  = cudaGetDeviceCount(&device_count);
+    cudaError_t err    = cudaGetDeviceCount(&device_count);
     if (err != cudaSuccess || device_count == 0) {
       throw std::runtime_error(
-          "CudaContext: no CUDA devices available (cudaGetDeviceCount "
-          "returned 0 or error)");
+          std::string("CudaContext: no CUDA devices available "
+                      "(cudaGetDeviceCount returned ") +
+          std::to_string(static_cast<int>(err)) +
+          " with " + std::to_string(device_count) + " devices)");
     }
-    cudaSetDevice(0);
+    cudaError_t set_err = cudaSetDevice(0);
+    if (set_err != cudaSuccess) {
+      throw std::runtime_error(
+          std::string("CudaContext: cudaSetDevice(0) failed: ") +
+          cudaGetErrorString(set_err));
+    }
     cudaDeviceProp prop{};
-    cudaGetDeviceProperties(&prop, 0);
+    std::memset(&prop, 0, sizeof(prop));
+    cudaError_t prop_err = cudaGetDeviceProperties(&prop, 0);
+    if (prop_err != cudaSuccess) {
+      throw std::runtime_error(
+          std::string("CudaContext: cudaGetDeviceProperties failed: ") +
+          cudaGetErrorString(prop_err));
+    }
     device_name_ = prop.name;
 
     // Per-stream events used for stage timing.
     for (int i = 0; i < kMaxStreams; ++i) {
       streams_[i] = nullptr;
-      cudaStreamCreate(&streams_[i]);
+      cudaError_t stream_err = cudaStreamCreate(&streams_[i]);
+      if (stream_err != cudaSuccess) {
+        // Roll back partial initialisation before throwing.
+        for (int j = 0; j < i; ++j) {
+          cudaStreamDestroy(streams_[j]);
+          streams_[j] = nullptr;
+        }
+        throw std::runtime_error(
+            std::string("CudaContext: cudaStreamCreate failed: ") +
+            cudaGetErrorString(stream_err));
+      }
     }
   }
 

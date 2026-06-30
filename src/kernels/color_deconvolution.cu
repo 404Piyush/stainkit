@@ -4,9 +4,11 @@
 //   - Input:  per-pixel RGB in [0, 1].
 //   - Output: per-pixel OD for each stain channel.
 //
-// The math reduces to a single 3x3 matrix multiply per pixel. We keep
-// the stain matrix in constant memory so the entire deconvolution fits
-// in a few hundred bytes.
+// The math reduces to a 3x3 matrix multiply per pixel. We pass the
+// inverse stain matrix as a kernel argument (in device memory) rather
+// than using __constant__ memory: cudaMemcpyToSymbolAsync has caused
+// segfaults on Colab's CUDA 12.8 runtime, and using regular device
+// memory is more portable anyway.
 
 #include <cuda_runtime.h>
 
@@ -21,12 +23,10 @@ namespace stainkit {
 namespace kernels {
 namespace {
 
-// Two copies: one for the (R,G,B)-column-major basis, one for the
-// pixel-format stain matrix. Kept in __constant__ memory so the SM can
-// broadcast it.
-__constant__ float cStain[9];
-
+// 9 floats = the inverse stain matrix (column-major). Kept in device
+// memory and passed by pointer to the kernel.
 __global__ void DeconvolveKernel(const float* __restrict__ d_in,
+                                 const float* __restrict__ d_stain_inv,
                                  float* __restrict__ d_out, std::size_t npix) {
   const std::size_t idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x +
                           threadIdx.x;
@@ -39,19 +39,17 @@ __global__ void DeconvolveKernel(const float* __restrict__ d_in,
   const float od_g  = -logf(fmaxf(d_in[base + 1], eps));
   const float od_b  = -logf(fmaxf(d_in[base + 2], eps));
 
-  // Apply the pseudo-inverse stain matrix. We use the "complete" 3x3 form
-  // even when only H and E are wanted so a future residual channel can be
+  // Apply the inverse stain matrix. We use the complete 3x3 form even
+  // when only H and E are wanted so a future residual channel can be
   // exposed without a code change.
-  const float c0 = cStain[0] * od_r + cStain[1] * od_g + cStain[2] * od_b;
-  const float c1 = cStain[3] * od_r + cStain[4] * od_g + cStain[5] * od_b;
-  const float c2 = cStain[6] * od_r + cStain[7] * od_g + cStain[8] * od_b;
+  const float c0 = d_stain_inv[0] * od_r + d_stain_inv[1] * od_g + d_stain_inv[2] * od_b;
+  const float c1 = d_stain_inv[3] * od_r + d_stain_inv[4] * od_g + d_stain_inv[5] * od_b;
+  const float c2 = d_stain_inv[6] * od_r + d_stain_inv[7] * od_g + d_stain_inv[8] * od_b;
 
   d_out[2 * idx + 0] = c0;
   d_out[2 * idx + 1] = c1;
-  if (idx == 0) {
-    // (the residual channel is dropped on output; keep slot for the future)
-    (void)c2;
-  }
+  // c2 is computed for completeness (residual channel); not written out.
+  (void)c2;
 }
 
 inline cudaStream_t AsStream(void* s) {
@@ -72,9 +70,7 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   }
 
   // Build a 3x3 stain matrix on the host. We use the (R, G, B)-column-major
-  // form so that the kernel's `cStain` matches a row-major constant array.
-  // The third column is taken as the cross product of H and E to give a
-  // orthonormal "residual" basis.
+  // form. The third column is taken as the cross product of H and E.
   std::array<float, 9> m{};
   m[0] = matrix.values[0];
   m[1] = matrix.values[1];
@@ -82,29 +78,22 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   m[3] = matrix.values[3];
   m[4] = matrix.values[4];
   m[5] = matrix.values[5];
-  // Cross product (H x E) for the third column.
   const float hx = m[0], hy = m[1], hz = m[2];
   const float ex = m[3], ey = m[4], ez = m[5];
   m[6] = hy * ez - hz * ey;
   m[7] = hz * ex - hx * ez;
   m[8] = hx * ey - hy * ex;
-  // Normalise the residual.
-  const float n = std::sqrt(m[6] * m[6] + m[7] * m[7] + m[8] * m[8]);
-  if (n > 1e-6f) {
-    m[6] /= n;
-    m[7] /= n;
-    m[8] /= n;
+  const float nrm = std::sqrt(m[6] * m[6] + m[7] * m[7] + m[8] * m[8]);
+  if (nrm > 1e-6f) {
+    m[6] /= nrm;
+    m[7] /= nrm;
+    m[8] /= nrm;
   }
 
-  // Invert the 3x3 stain matrix on the host (we only need this once per
-  // pipeline invocation).
-  // (We compute it via the same cofactor expansion as the CPU reference.)
-  auto det3 = [](const std::array<float, 9>& a) {
-    return a[0] * (a[4] * a[8] - a[5] * a[7]) -
-           a[1] * (a[3] * a[8] - a[5] * a[6]) +
-           a[2] * (a[3] * a[7] - a[4] * a[6]);
-  };
-  const float det = det3(m);
+  // Invert the 3x3 stain matrix on the host.
+  const float det = m[0] * (m[4] * m[8] - m[5] * m[7]) -
+                    m[1] * (m[3] * m[8] - m[5] * m[6]) +
+                    m[2] * (m[3] * m[7] - m[4] * m[6]);
   if (std::abs(det) < 1e-12f) {
     throw std::runtime_error(
         "ColorDeconvolveRgb: stain matrix is singular, cannot invert");
@@ -121,12 +110,25 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   inv[7] = (m[1] * m[6] - m[0] * m[7]) * inv_det;
   inv[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
 
-  // Upload the inverse to constant memory.
+  // Upload the inverse to a small device buffer. This is safer than
+  // cudaMemcpyToSymbolAsync (which segfaulted on Colab's runtime).
   cudaStream_t s = AsStream(stream);
-  cudaMemcpyToSymbolAsync(cStain, inv.data(), sizeof(float) * 9, 0,
-                          cudaMemcpyHostToDevice, s);
+  float* d_stain_inv = nullptr;
+  cudaError_t e1 = cudaMalloc(&d_stain_inv, sizeof(float) * 9);
+  if (e1 != cudaSuccess) {
+    throw std::runtime_error(
+        std::string("ColorDeconvolveRgb: cudaMalloc failed: ") +
+        cudaGetErrorString(e1));
+  }
+  cudaError_t e2 = cudaMemcpyAsync(d_stain_inv, inv.data(), sizeof(float) * 9,
+                                   cudaMemcpyHostToDevice, s);
+  if (e2 != cudaSuccess) {
+    cudaFree(d_stain_inv);
+    throw std::runtime_error(
+        std::string("ColorDeconvolveRgb: cudaMemcpyAsync failed: ") +
+        cudaGetErrorString(e2));
+  }
 
-  // Run the kernel.
   const std::size_t npix  = width * height;
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
@@ -136,13 +138,24 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
-  DeconvolveKernel<<<grid, block, 0, s>>>(d_in_rgb, d_out_stain_od, npix);
+  DeconvolveKernel<<<grid, block, 0, s>>>(d_in_rgb, d_stain_inv,
+                                          d_out_stain_od, npix);
+  cudaError_t e3 = cudaGetLastError();
+  if (e3 != cudaSuccess) {
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    cudaFree(d_stain_inv);
+    throw std::runtime_error(
+        std::string("ColorDeconvolveRgb: kernel launch failed: ") +
+        cudaGetErrorString(e3));
+  }
   cudaEventRecord(stop, s);
   cudaEventSynchronize(stop);
   float elapsed_ms = 0.0f;
   cudaEventElapsedTime(&elapsed_ms, start, stop);
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
+  cudaFree(d_stain_inv);
 
   (void)num_stains;  // reserved for future use
   (void)num_streams;
