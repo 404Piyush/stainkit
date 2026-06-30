@@ -219,6 +219,13 @@ int main(int argc, char** argv) {
 
   // -- Discover input images --
   std::vector<fs::path> inputs = stainkit::ListImagesIn(args.input_dir);
+  // Flush any pending stdout before we attempt CUDA init - that way
+  // we can see whether a SIGSEGV happens before or after this print.
+  std::cout.flush();
+  std::cerr.flush();
+  std::fprintf(stderr, "[main] about to call Pipeline::Make\n");
+  std::fflush(stderr);
+
   if (args.num_images >= 0 &&
       static_cast<std::size_t>(args.num_images) < inputs.size()) {
     inputs.resize(static_cast<std::size_t>(args.num_images));
