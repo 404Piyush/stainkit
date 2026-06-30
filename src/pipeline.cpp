@@ -287,6 +287,9 @@ PipelineResult Pipeline::Run(const Image& input, const PipelineParams& params,
 PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                                             const PipelineParams& params,
                                             const StainTarget& target) {
+  std::fprintf(stderr, "[RunWithCpuBaseline] enter w=%zu h=%zu npix=%zu\n",
+               input.width, input.height, input.width * input.height);
+  std::fflush(stderr);
   if (!ctx_) {
     throw std::runtime_error("Pipeline::Run: no CUDA context");
   }
@@ -297,9 +300,12 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   const std::size_t h       = input.height;
   const std::size_t npix    = w * h;
   const std::size_t rgb_sz  = npix * 3 * sizeof(float);
+  std::fprintf(stderr, "[RunWithCpuBaseline] rgb_sz=%zu npix=%zu\n", rgb_sz, npix);
+  std::fflush(stderr);
   const std::size_t od_sz   = npix * 2 * sizeof(float);
   const std::size_t lum_sz  = npix * sizeof(float);
   const std::size_t mask_sz = npix * sizeof(std::uint8_t);
+  std::fprintf(stderr, "[RunWithCpuBaseline] before cpu baseline\n"); std::fflush(stderr);
 
   PipelineResult result;
   result.timing.image_id = input.empty() ? "<empty>" : "<gpu-run>";
@@ -308,8 +314,10 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
 
   // -- CPU baseline (always measured, even if we don't need it) --
   double cpu_ms = 0.0;
+  std::fprintf(stderr, "[RunWithCpuBaseline] calling cpu baseline...\n"); std::fflush(stderr);
   (void)CpuReferenceStainNormalise(input, params, target, &cpu_ms);
   result.timing.cpu_baseline_ms = cpu_ms;
+  std::fprintf(stderr, "[RunWithCpuBaseline] cpu baseline done, ms=%.3f\n", cpu_ms); std::fflush(stderr);
 
   // -- Host staging (use pinned memory when requested) --
   std::vector<float> host_rgb(npix * 3);
@@ -323,10 +331,14 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
     }
   }
   result.timing.load_ms = 0.0;  // the caller is responsible for I/O timing.
+  std::fprintf(stderr, "[RunWithCpuBaseline] host staging done\n"); std::fflush(stderr);
 
   // -- Allocate device buffers --
+  std::fprintf(stderr, "[RunWithCpuBaseline] allocating device buffers...\n"); std::fflush(stderr);
   DeviceBuffer d_rgb_in(rgb_sz);
+  std::fprintf(stderr, "[RunWithCpuBaseline] d_rgb_in ok\n"); std::fflush(stderr);
   DeviceBuffer d_rgb_out(rgb_sz);
+  std::fprintf(stderr, "[RunWithCpuBaseline] d_rgb_out ok\n"); std::fflush(stderr);
   DeviceBuffer d_stain_od(od_sz);
   DeviceBuffer d_lum(lum_sz);
   DeviceBuffer d_mask(mask_sz);
