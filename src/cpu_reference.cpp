@@ -146,7 +146,6 @@ Image CpuReferenceStainNormalise(const Image& input,
       target.matrix.values[1], target.matrix.values[4], 0.0f,  // row 1
       target.matrix.values[2], target.matrix.values[5], 1.0f,  // row 2
   };
-  const std::array<float, 9> target_stain_inv = Invert3x3(target_stain);
 
   Image out = MakeImage(w, h, PixelLayout::kRgb);
   for (std::size_t i = 0; i < w * h; ++i) {

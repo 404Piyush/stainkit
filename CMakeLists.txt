@@ -73,7 +73,10 @@ find_package(CUDAToolkit REQUIRED)
 # Stb image (single-header, vendored)
 # ----------------------------------------------------------------------------
 add_library(stb_image INTERFACE)
-target_include_directories(stb_image INTERFACE
+# SYSTEM includes mark the directory as a third-party path so the compiler
+# suppresses warnings generated inside it (stb_image_write.h triggers a
+# few hundred -Wmissing-field-initializers warnings that are noise to us).
+target_include_directories(stb_image SYSTEM INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb>
 )
 # We let io.cpp define STB_IMAGE_IMPLEMENTATION / STB_IMAGE_WRITE_IMPLEMENTATION
