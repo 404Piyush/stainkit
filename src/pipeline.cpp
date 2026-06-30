@@ -33,8 +33,12 @@ namespace stainkit {
 class CudaContext {
  public:
   CudaContext() {
+    std::fprintf(stderr, "[CudaContext] enter\n"); std::fflush(stderr);
     int device_count = 0;
     cudaError_t err    = cudaGetDeviceCount(&device_count);
+    std::fprintf(stderr, "[CudaContext] cudaGetDeviceCount -> %d (%s), count=%d\n",
+                 (int)err, cudaGetErrorString(err), device_count);
+    std::fflush(stderr);
     if (err != cudaSuccess || device_count == 0) {
       throw std::runtime_error(
           std::string("CudaContext: no CUDA devices available "
@@ -43,6 +47,9 @@ class CudaContext {
           " with " + std::to_string(device_count) + " devices)");
     }
     cudaError_t set_err = cudaSetDevice(0);
+    std::fprintf(stderr, "[CudaContext] cudaSetDevice -> %d (%s)\n",
+                 (int)set_err, cudaGetErrorString(set_err));
+    std::fflush(stderr);
     if (set_err != cudaSuccess) {
       throw std::runtime_error(
           std::string("CudaContext: cudaSetDevice(0) failed: ") +
@@ -51,6 +58,9 @@ class CudaContext {
     cudaDeviceProp prop{};
     std::memset(&prop, 0, sizeof(prop));
     cudaError_t prop_err = cudaGetDeviceProperties(&prop, 0);
+    std::fprintf(stderr, "[CudaContext] cudaGetDeviceProperties -> %d (%s)\n",
+                 (int)prop_err, cudaGetErrorString(prop_err));
+    std::fflush(stderr);
     if (prop_err != cudaSuccess) {
       throw std::runtime_error(
           std::string("CudaContext: cudaGetDeviceProperties failed: ") +
@@ -188,8 +198,12 @@ bool Pipeline::IsCudaAvailable() noexcept {
 }
 
 std::unique_ptr<Pipeline> Pipeline::Make() {
+  std::fprintf(stderr, "[Make] enter\n"); std::fflush(stderr);
   try {
-    return std::unique_ptr<Pipeline>(new Pipeline());
+    std::fprintf(stderr, "[Make] about to allocate Pipeline\n"); std::fflush(stderr);
+    auto p = std::unique_ptr<Pipeline>(new Pipeline());
+    std::fprintf(stderr, "[Make] Pipeline allocated ok\n"); std::fflush(stderr);
+    return p;
   } catch (const std::exception& ex) {
     std::cerr << "stainkit: failed to construct pipeline: " << ex.what()
               << std::endl;
@@ -242,6 +256,7 @@ struct SegvRecovery {
 }  // namespace
 
 std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
+  std::fprintf(stderr, "[MakeOrFallback] enter\n"); std::fflush(stderr);
   SegvRecovery rec;
   rec.current() = &rec;
   if (sigsetjmp(rec.jmp, 1) != 0) {
@@ -253,7 +268,9 @@ std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
     return nullptr;
   }
   rec.Arm();
+  std::fprintf(stderr, "[MakeOrFallback] signal handlers installed\n"); std::fflush(stderr);
   auto p = Make();
+  std::fprintf(stderr, "[MakeOrFallback] Make() returned\n"); std::fflush(stderr);
   rec.Disarm();
   return p;
 }
