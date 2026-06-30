@@ -50,8 +50,16 @@ if ! command -v cmake >/dev/null 2>&1; then
 fi
 
 if ! command -v nvcc >/dev/null 2>&1; then
-  echo "stainkit: nvcc not found on PATH. Install the CUDA Toolkit first." >&2
-  exit 1
+  # Colab / containers may have nvcc under /usr/local/cuda but not on PATH.
+  if [[ -x /usr/local/cuda/bin/nvcc ]]; then
+    export PATH="/usr/local/cuda/bin:${PATH}"
+    echo "stainkit: using nvcc at /usr/local/cuda/bin/nvcc"
+  else
+    echo "stainkit: nvcc not found on PATH. Install the CUDA Toolkit first." >&2
+    echo "                On Debian/Ubuntu: sudo apt-get install cuda-toolkit-12" >&2
+    echo "                Or run scripts/setup_colab.sh first." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p build
