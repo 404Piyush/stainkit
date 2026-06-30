@@ -58,6 +58,11 @@ endif()
 find_package(Threads REQUIRED)
 find_package(OpenMP)
 
+# Locate the CUDA toolkit so the imported targets (CUDA::cudart,
+# CUDA::cuda_driver, ...) are populated. With `LANGUAGES CUDA` alone
+# these targets are *not* registered on CMake >= 3.18.
+find_package(CUDAToolkit REQUIRED)
+
 # ----------------------------------------------------------------------------
 # Stb image (single-header, vendored)
 # ----------------------------------------------------------------------------
@@ -213,11 +218,12 @@ endif()
 # Install rules
 # ----------------------------------------------------------------------------
 include(GNUInstallDirs)
-install(TARGETS stainkit stainkit_cuda stainkit_core
+install(TARGETS stainkit stainkit_cuda stainkit_core stb_image
     EXPORT stainkitTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(EXPORT stainkitTargets

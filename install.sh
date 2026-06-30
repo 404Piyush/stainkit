@@ -65,6 +65,10 @@ fi
 mkdir -p build
 cd build
 
+# Wipe the CMake cache so a previous run with stale option values does
+# not pollute the new build (the cache survives `git pull`).
+rm -rf CMakeCache.txt CMakeFiles
+
 cmake -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
       -DSTK_BUILD_PYTHON="${BUILD_PYTHON}" \
       -DSTK_BUILD_TESTS="${BUILD_TESTS}" \
