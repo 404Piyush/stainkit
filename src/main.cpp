@@ -263,6 +263,8 @@ int main(int argc, char** argv) {
   std::fprintf(stderr, "[main] past if(pipeline) check\n"); std::fflush(stderr);
 
   // -- Process loop --
+  std::fprintf(stderr, "[main] entering process loop with %zu images\n",
+               inputs.size()); std::fflush(stderr);
   std::vector<stainkit::BenchmarkRecord> bench;
   bench.reserve(inputs.size());
 
@@ -284,7 +286,11 @@ int main(int argc, char** argv) {
     const fs::path    out_viz = args.output_dir / (stem + "_panel.png");
 
     if (pipeline) {
+      std::fprintf(stderr, "[main] image %zu about to call RunWithCpuBaseline\n",
+                   idx); std::fflush(stderr);
       const auto rr = pipeline->RunWithCpuBaseline(img, params, target);
+      std::fprintf(stderr, "[main] image %zu RunWithCpuBaseline returned\n",
+                   idx); std::fflush(stderr);
       stainkit::WriteImage(rr.normalised, out_png);
       if (args.compute_mask) {
         stainkit::WriteImage(rr.tissue_mask, out_msk);
