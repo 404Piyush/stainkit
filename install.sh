@@ -105,6 +105,13 @@ CMAKE_INVOCATION+=("..")
 
 "${CMAKE_INVOCATION[@]}"
 
+# Wipe ALL build artefacts so a `git pull` followed by re-install forces
+# a full recompile. Otherwise a `make` no-op can mask new code if the
+# previous build cached an intermediate object file.
+rm -rf CMakeFiles CMakeCache.txt cmake_install.cmake Makefile \
+       install_manifest.txt _deps stainkit_core.dir stainkit_cuda.dir \
+       stainkit.dir stainkit_bench.dir bin lib
+
 # Use all available cores.
 NPROC="$(command -v nproc >/dev/null && nproc || echo 4)"
 echo "stainkit: building with ${NPROC} parallel job(s)..."
