@@ -193,10 +193,12 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
                          const StainTarget& target, StainMatrix& estimated,
                          float* d_out_rgb, void* stream) {
+  std::fprintf(stderr, "[NS] enter\n"); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_rgb == nullptr) {
     throw std::invalid_argument("NormaliseStainFull: null device pointer(s)");
   }
   cudaStream_t s = AsStream(stream);
+  std::fprintf(stderr, "[NS] got stream\n"); std::fflush(stderr);
 
   // 1. Deconvolve the input into the (H, E) OD channels.
   //    We reuse the same 3x3 stain matrix as the target basis for the
@@ -211,8 +213,11 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   const std::size_t npix    = width * height;
   const std::size_t od_size = npix * 2 * sizeof(float);
   float*            d_od    = nullptr;
+  std::fprintf(stderr, "[NS] cudaMalloc d_od\n"); std::fflush(stderr);
   cudaMalloc(&d_od, od_size);
+  std::fprintf(stderr, "[NS] ColorDeconvolveRgb\n"); std::fflush(stderr);
   ColorDeconvolveRgb(d_in_rgb, width, height, target.matrix, d_od, 2, 1, &s);
+  std::fprintf(stderr, "[NS] ColorDeconv ok\n"); std::fflush(stderr);
   (void)stain;  // (kept for documentation; basis is in constant memory)
 
   // 2. Compute (angle, magnitude) per pixel.
@@ -220,21 +225,28 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   float* d_mags   = nullptr;
   cudaMalloc(&d_angles, npix * sizeof(float));
   cudaMalloc(&d_mags, npix * sizeof(float));
+  std::fprintf(stderr, "[NS] ComputeStainPlaneAngles\n"); std::fflush(stderr);
   ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, &s);
+  std::fprintf(stderr, "[NS] ComputeAngles ok\n"); std::fflush(stderr);
 
   // 3. Copy the angles back to the host, build the histogram and estimate
   //    the stain basis. For the *first* iteration of the algorithm we use
   //    the user-supplied target matrix; on subsequent iterations the
   //    estimated basis would replace it. We keep it simple here and
   //    always reuse the target.
-  std::vector<float> h_angles(npix);
+std::vector<float> h_angles(npix);
+  std::fprintf(stderr, "[NS] memcpy angles\n"); std::fflush(stderr);
   cudaMemcpyAsync(h_angles.data(), d_angles, npix * sizeof(float),
                   cudaMemcpyDeviceToHost, s);
+  std::fprintf(stderr, "[NS] sync\n"); std::fflush(stderr);
   cudaStreamSynchronize(s);
+  std::fprintf(stderr, "[NS] sync done\n"); std::fflush(stderr);
   const auto hist = BuildAngleHistogram(h_angles);
+  std::fprintf(stderr, "[NS] histogram\n"); std::fflush(stderr);
   estimated       = EstimateStainMatrixFromAngles(
       hist, npix, params.stain_percentile_low, params.stain_percentile_high,
       target.matrix);
+  std::fprintf(stderr, "[NS] estimated\n"); std::fflush(stderr);
 
   // 4. Reconstruct using the target matrix + concentrations.
   cudaEvent_t start{};
@@ -242,9 +254,11 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
+  std::fprintf(stderr, "[NS] Reconstruct\n"); std::fflush(stderr);
   ReconstructRgbFromStain(d_od, width, height, target, d_out_rgb, &s);
+  std::fprintf(stderr, "[NS] Reconstruct ok\n"); std::fflush(stderr);
   cudaEventRecord(stop, s);
-  cudaEventSynchronize(stop);
+  cudaStreamSynchronize(stop);
   float ms = 0.0f;
   cudaEventElapsedTime(&ms, start, stop);
   cudaEventDestroy(start);
@@ -253,6 +267,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaFree(d_angles);
   cudaFree(d_mags);
   cudaFree(d_od);
+  std::fprintf(stderr, "[NS] done\n"); std::fflush(stderr);
   return ms;
 }
 
