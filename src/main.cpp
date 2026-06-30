@@ -240,7 +240,11 @@ int main(int argc, char** argv) {
   // -- Build the pipeline (with CPU fallback) --
   std::unique_ptr<stainkit::Pipeline> pipeline;
   if (!args.cpu_only) {
-    pipeline = stainkit::Pipeline::Make();
+    // Defensive: wrap Make() in a SIGSEGV handler so that an ABI mismatch
+    // between the build-time CUDA runtime (e.g. 12.8) and the host's CUDA
+    // driver (e.g. 13.0) doesn't terminate the whole process. We catch
+    // the segfault, log it, and fall back to the CPU reference path.
+    pipeline = stainkit::Pipeline::MakeOrFallback();
   }
   if (pipeline) {
     std::cout << "stainkit: using GPU: " << pipeline->DeviceName() << "\n";

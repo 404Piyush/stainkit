@@ -7,6 +7,8 @@
 #ifndef STK_INCLUDE_STAINKIT_PIPELINE_H_
 #define STK_INCLUDE_STAINKIT_PIPELINE_H_
 
+#include <csetjmp>
+#include <csignal>
 #include <memory>
 #include <string>
 #include <vector>
@@ -46,6 +48,12 @@ class Pipeline {
 
   static std::unique_ptr<Pipeline> Make();
   static bool IsCudaAvailable() noexcept;
+
+  // Same as Make() but recovers from a SIGSEGV raised inside CUDA init
+  // (for example when the binary was built against one CUDA runtime and
+  // the host driver/runtime is incompatible). Returns nullptr on any
+  // failure including a caught SIGSEGV.
+  static std::unique_ptr<Pipeline> MakeOrFallback();
 
   // Per-image run. The image data is fully copied inside this call; the
   // caller may free `input` immediately upon return.

@@ -197,6 +197,67 @@ std::unique_ptr<Pipeline> Pipeline::Make() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SIGSEGV-recovering Make(): catches a SIGSEGV raised inside CUDA init
+// (for example an ABI mismatch between the build-time and host CUDA
+// runtime). Without this, an ABI mismatch terminates the whole process
+// and the CLI cannot fall back to the CPU reference path.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct SegvRecovery {
+  std::sigjmp_buf jmp{};
+  volatile std::sig_atomic_t armed = 0;
+
+  void Arm() {
+    armed = 1;
+    std::signal(SIGSEGV, &SegvRecovery::Handler);
+    std::signal(SIGBUS,  &SegvRecovery::Handler);
+  }
+
+  void Disarm() {
+    armed = 0;
+    std::signal(SIGSEGV, SIG_DFL);
+    std::signal(SIGBUS,  SIG_DFL);
+  }
+
+  static void Handler(int sig) {
+    auto* self = current();
+    if (self != nullptr && self->armed != 0) {
+      self->Disarm();
+      std::siglongjmp(self->jmp, 1);
+    }
+    // Re-raise with default disposition so the user still sees a crash
+    // if the SIGSEGV happens outside MakeOrFallback's scope.
+    std::signal(sig, SIG_DFL);
+    raise(sig);
+  }
+
+  static SegvRecovery*& current() {
+    static thread_local SegvRecovery* ptr = nullptr;
+    return ptr;
+  }
+};
+
+}  // namespace
+
+std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
+  SegvRecovery rec;
+  rec.current() = &rec;
+  if (std::sigsetjmp(rec.jmp, 1) != 0) {
+    std::cerr << "stainkit: caught SIGSEGV/SIGBUS inside CUDA init - "
+                 "falling back to CPU reference implementation. "
+                 "This usually means the binary was built against a CUDA "
+                 "runtime that is incompatible with the host driver."
+              << std::endl;
+    return nullptr;
+  }
+  rec.Arm();
+  auto p = Make();
+  rec.Disarm();
+  return p;
+}
+
 std::string Pipeline::DeviceName() const {
   return ctx_ ? ctx_->DeviceName() : std::string{"<no CUDA context>"};
 }
