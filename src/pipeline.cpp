@@ -206,7 +206,7 @@ std::unique_ptr<Pipeline> Pipeline::Make() {
 namespace {
 
 struct SegvRecovery {
-  std::sigjmp_buf jmp{};
+  sigjmp_buf jmp{};
   volatile std::sig_atomic_t armed = 0;
 
   void Arm() {
@@ -225,7 +225,7 @@ struct SegvRecovery {
     auto* self = current();
     if (self != nullptr && self->armed != 0) {
       self->Disarm();
-      std::siglongjmp(self->jmp, 1);
+      siglongjmp(self->jmp, 1);
     }
     // Re-raise with default disposition so the user still sees a crash
     // if the SIGSEGV happens outside MakeOrFallback's scope.
@@ -244,7 +244,7 @@ struct SegvRecovery {
 std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
   SegvRecovery rec;
   rec.current() = &rec;
-  if (std::sigsetjmp(rec.jmp, 1) != 0) {
+  if (sigsetjmp(rec.jmp, 1) != 0) {
     std::cerr << "stainkit: caught SIGSEGV/SIGBUS inside CUDA init - "
                  "falling back to CPU reference implementation. "
                  "This usually means the binary was built against a CUDA "
