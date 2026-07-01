@@ -279,6 +279,10 @@ single biggest GPU win (10x), and on larger images the relative
 advantage grows further as the kernel work scales with `npix` while
 launch overhead stays constant.
 
+See [`docs/screenshots.md`](docs/screenshots.md) for the
+before/after panel visualisations and the CPU vs GPU benchmark
+plot.
+
 ---
 
 ## Contributing
