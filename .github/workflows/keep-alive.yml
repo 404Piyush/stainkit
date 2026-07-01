@@ -1,0 +1,41 @@
+name: keep-alive
+
+on:
+  schedule:
+    # Ping every 5 minutes so the Lightning Studio backend never auto-sleeps.
+    # Lightning AI Studios auto-stop after ~10 min of idle, but they only
+    # auto-stop on hard timeout. A 5-minute keep-alive is the cheapest way
+    # to keep the live demo at stainkit.404piyush.me ready for any user.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: ping backend
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3
+    steps:
+      - name: Health check
+        id: healthz
+        run: |
+          BACKEND="https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai"
+          # First ping: in case the studio is asleep this warms it up.
+          # Subsequent pings: keep it from sleeping.
+          for i in 1 2 3; do
+            echo "--- ping attempt $i ---"
+            START=$(date +%s)
+            HTTP=$(curl -sS -m 60 -o /tmp/h.json -w "%{http_code}" "${BACKEND}/healthz" || echo "000")
+            END=$(date +%s)
+            ELAPSED=$((END - START))
+            echo "HTTP ${HTTP} in ${ELAPSED}s"
+            cat /tmp/h.json 2>/dev/null || true
+            echo ""
+            if [ "$HTTP" = "200" ]; then
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Backend did not respond after 3 attempts. The Lightning Studio may be stopped."
+          exit 0
