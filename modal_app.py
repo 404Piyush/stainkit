@@ -15,7 +15,14 @@ Deploy:
     modal deploy modal_app.py
 
 The deploy prints a permanent URL like:
-    https://404piyush--stainkit-demo-fastapi-app.modal.run
+    https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run
+
+NOTE: we do NOT use Image.from_dockerfile here because Modal needs to
+own the Python install (for the runtime hook). Instead we layer:
+  1. base = nvidia/cuda:12.2.0-devel-ubuntu22.04 (compiler + CUDA libs)
+  2. apt_install = compilers, libtiff, libopenslide
+  3. run_commands = build stainkit via ./install.sh
+  4. pip_install = fastapi, uvicorn (Python web layer)
 """
 
 from __future__ import annotations
@@ -34,18 +41,32 @@ from fastapi.responses import JSONResponse
 REPO_ROOT = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
-# Image: build stainkit inside an NVIDIA CUDA 12.2 container using the
-# Dockerfile that ships in the repo (huggingface/Dockerfile).
+# Image: layer the CUDA base image, the apt packages, the C++ build, and
+# the Python web dependencies. Modal owns the Python install so the
+# apt python3 packages would never be visible to the runtime.
 # ---------------------------------------------------------------------------
 stainkit_image = (
-    modal.Image.from_dockerfile(
-        REPO_ROOT / "huggingface" / "Dockerfile",
-        context_dir=REPO_ROOT,
+    modal.Image.from_registry(
+        "nvidia/cuda:12.2.0-devel-ubuntu22.04",
+        add_python="3.11",
+    )
+    .apt_install(
+        "build-essential", "cmake", "ninja-build", "git", "curl", "wget",
+        "libtiff-dev", "libopenslide-dev", "ca-certificates",
+    )
+    .add_local_dir(REPO_ROOT, "/app", copy=True)
+    .run_commands(
+        # Sanity check: the binary exists and prints its version.
+        "ls /app",
+        "cd /app && bash install.sh --no-tests --no-python",
+        "/app/build/bin/stainkit --version",
+        "/app/build/bin/stainkit --help > /dev/null && echo CLI_OK",
     )
     .env({
         "STK_BIN":     "/app/build/bin/stainkit",
         "STK_WORKDIR": "/tmp/stk_uploads",
     })
+    .pip_install("fastapi==0.115.0", "uvicorn==0.32.0")
 )
 
 app = modal.App("stainkit-demo", image=stainkit_image)
@@ -59,7 +80,7 @@ app = modal.App("stainkit-demo", image=stainkit_image)
     cpu=2,
     memory=2048,
     timeout=180,
-    container_idle_timeout=120,        # spin down after 2 min idle
+    scaledown_window=120,             # spin down after 2 min idle
 )
 @modal.asgi_app()
 def fastapi_app():
@@ -75,8 +96,6 @@ def fastapi_app():
         if not body:
             raise HTTPException(400, "empty body; POST a PNG/JPEG file")
 
-        # Per-request scratch directory. Modal reuses the same container
-        # across requests so we keep names unique with a timestamp+pid.
         work = Path("/tmp/stk_uploads")
         work.mkdir(parents=True, exist_ok=True)
         req_id  = f"{int(time.time() * 1000)}_{os.getpid()}"

@@ -1,5 +1,12 @@
 # Pinned versions that match the HF Spaces T4 small image as of 2026.
 # Keep these conservative — every bump is a maintenance event.
+#
+# fastapi is needed by the Modal deploy (modal_app.py uses FastAPI for
+# its ASGI endpoint). Gradio is needed by the HuggingFace Space
+# (huggingface/app.py). Both are installed here so the same
+# requirements.txt works for both deployment targets.
 gradio==4.44.0
 numpy==1.26.4
 Pillow==10.4.0
+fastapi==0.115.0
+uvicorn==0.32.0
