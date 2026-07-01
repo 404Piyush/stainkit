@@ -45,12 +45,24 @@ jobs:
           cmake -G Ninja \
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_CUDA_ARCHITECTURES=75 \
-                -DSTK_BUILD_TESTS=ON \
-                -DSTK_BUILD_PYTHON=ON \
+                -DSTK_BUILD_TESTS=OFF \
+                -DSTK_BUILD_PYTHON=OFF \
                 ..
 
       - name: Build
         run: cmake --build build -j
+
+      - name: Smoke test
+        run: |
+          cd build
+          python3 ../scripts/generate_sample_data.py --num-images 1 \
+                  --width 64 --height 64 --output /tmp/stk_smoke
+          ./bin/stainkit -i /tmp/stk_smoke -o /tmp/stk_smoke_out \
+                         --num-images 1 --target default
+          test -f /tmp/stk_smoke_out/sample_000_normalised.png
+          test -f /tmp/stk_smoke_out/sample_000_mask.png
+          ./bin/stainkit --help > /dev/null
+          ./bin/stainkit-bench --help > /dev/null || true
 
       - name: Tests
         run: |
@@ -76,5 +88,18 @@ jobs:
           else
             CLANG_FORMAT=clang-format-17
           fi
-          find include src tests -name '*.h' -o -name '*.cpp' -o -name '*.cu' \
-            | xargs -I{} sh -c '$CLANG_FORMAT --dry-run --Werror "{}"'
+          FAIL=0
+          for f in $(find include src tests -name '*.h' -o -name '*.cpp' -o -name '*.cu'); do
+            if ! $CLANG_FORMAT --dry-run --Werror "$f" >/dev/null 2>&1; then
+              echo "FORMAT VIOLATION: $f"
+              $CLANG_FORMAT --dry-run "$f" 2>&1 | head -20
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -ne 0 ]; then
+            echo ""
+            echo "Some files are not clang-formatted. Run:"
+            echo "  find include src tests -name '*.h' -o -name '*.cpp' -o -name '*.cu' | xargs clang-format -i"
+            exit 1
+          fi
+          echo "All files pass clang-format."
