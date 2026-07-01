@@ -9,7 +9,6 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -33,23 +32,13 @@ namespace stainkit {
 class CudaContext {
  public:
   CudaContext() {
-    std::fprintf(stderr, "[CudaContext] enter\n"); std::fflush(stderr);
     int device_count = 0;
-    cudaError_t err    = cudaGetDeviceCount(&device_count);
-    std::fprintf(stderr, "[CudaContext] cudaGetDeviceCount -> %d (%s), count=%d\n",
-                 (int)err, cudaGetErrorString(err), device_count);
-    std::fflush(stderr);
+    cudaError_t err  = cudaGetDeviceCount(&device_count);
     if (err != cudaSuccess || device_count == 0) {
       throw std::runtime_error(
-          std::string("CudaContext: no CUDA devices available "
-                      "(cudaGetDeviceCount returned ") +
-          std::to_string(static_cast<int>(err)) +
-          " with " + std::to_string(device_count) + " devices)");
+          "CudaContext: no CUDA devices available");
     }
     cudaError_t set_err = cudaSetDevice(0);
-    std::fprintf(stderr, "[CudaContext] cudaSetDevice -> %d (%s)\n",
-                 (int)set_err, cudaGetErrorString(set_err));
-    std::fflush(stderr);
     if (set_err != cudaSuccess) {
       throw std::runtime_error(
           std::string("CudaContext: cudaSetDevice(0) failed: ") +
@@ -58,9 +47,6 @@ class CudaContext {
     cudaDeviceProp prop{};
     std::memset(&prop, 0, sizeof(prop));
     cudaError_t prop_err = cudaGetDeviceProperties(&prop, 0);
-    std::fprintf(stderr, "[CudaContext] cudaGetDeviceProperties -> %d (%s)\n",
-                 (int)prop_err, cudaGetErrorString(prop_err));
-    std::fflush(stderr);
     if (prop_err != cudaSuccess) {
       throw std::runtime_error(
           std::string("CudaContext: cudaGetDeviceProperties failed: ") +
@@ -68,12 +54,10 @@ class CudaContext {
     }
     device_name_ = prop.name;
 
-    // Per-stream events used for stage timing.
     for (int i = 0; i < kMaxStreams; ++i) {
       streams_[i] = nullptr;
       cudaError_t stream_err = cudaStreamCreate(&streams_[i]);
       if (stream_err != cudaSuccess) {
-        // Roll back partial initialisation before throwing.
         for (int j = 0; j < i; ++j) {
           cudaStreamDestroy(streams_[j]);
           streams_[j] = nullptr;
@@ -117,17 +101,18 @@ class CudaContext {
 // ---------------------------------------------------------------------------
 namespace {
 
-// RAII wrappers for device memory. These are tiny because the pipeline
-// already pins the host buffer when the user requests it.
+// RAII wrapper for device memory.
 struct DeviceBuffer {
-  void*  ptr = nullptr;
+  void*  ptr  = nullptr;
   size_t size = 0;
 
   explicit DeviceBuffer(size_t bytes) : size(bytes) {
     if (bytes == 0) return;
     cudaError_t e = cudaMalloc(&ptr, bytes);
     if (e != cudaSuccess) {
-      throw std::runtime_error("DeviceBuffer: cudaMalloc failed");
+      throw std::runtime_error(
+          std::string("DeviceBuffer: cudaMalloc failed: ") +
+          cudaGetErrorString(e));
     }
   }
   ~DeviceBuffer() {
@@ -137,59 +122,32 @@ struct DeviceBuffer {
   DeviceBuffer& operator=(const DeviceBuffer&) = delete;
 };
 
-struct PinnedBuffer {
-  void*  ptr = nullptr;
-  size_t size = 0;
-
-  explicit PinnedBuffer(size_t bytes) : size(bytes) {
-    if (bytes == 0) return;
-    cudaError_t e = cudaHostAlloc(&ptr, bytes, cudaHostAllocDefault);
-    if (e != cudaSuccess) {
-      throw std::runtime_error("PinnedBuffer: cudaHostAlloc failed");
-    }
-  }
-  ~PinnedBuffer() {
-    if (ptr != nullptr) cudaFreeHost(ptr);
-  }
-  PinnedBuffer(const PinnedBuffer&)            = delete;
-  PinnedBuffer& operator=(const PinnedBuffer&) = delete;
-};
-
-// Stage timing helper.
+// Stage timing helper. Records a `start` event on construction and a
+// `stop` event on `MarkStop()` (or destructor). `elapsed_ms` is read
+// AFTER `MarkStop()` returns.
 struct ScopedEvent {
   cudaEvent_t start{};
   cudaEvent_t stop{};
   cudaStream_t stream{};
   float       elapsed_ms = 0.0f;
+  bool        stopped    = false;
 
   explicit ScopedEvent(cudaStream_t s) : stream(s) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start, stream);
   }
-  ~ScopedEvent() {
-    std::fprintf(stderr, "[~ScopedEvent] entry stream=%p\n", (void*)stream); std::fflush(stderr);
-    cudaError_t e1 = cudaEventRecord(stop, stream);
-    std::fprintf(stderr, "[~ScopedEvent] EventRecord -> %d (%s)\n", (int)e1, cudaGetErrorString(e1)); std::fflush(stderr);
-    cudaError_t e2 = cudaEventSynchronize(stop);
-    std::fprintf(stderr, "[~ScopedEvent] EventSync -> %d (%s)\n", (int)e2, cudaGetErrorString(e2)); std::fflush(stderr);
-    cudaError_t e3 = cudaEventElapsedTime(&elapsed_ms, start, stop);
-    std::fprintf(stderr, "[~ScopedEvent] ElapsedTime -> %d (%s), ms=%f\n",
-                 (int)e3, cudaGetErrorString(e3), elapsed_ms); std::fflush(stderr);
-    cudaError_t e4 = cudaEventDestroy(start);
-    std::fprintf(stderr, "[~ScopedEvent] Destroy start -> %d (%s)\n",
-                 (int)e4, cudaGetErrorString(e4)); std::fflush(stderr);
-    cudaError_t e5 = cudaEventDestroy(stop);
-    std::fprintf(stderr, "[~ScopedEvent] Destroy stop -> %d (%s)\n",
-                 (int)e5, cudaGetErrorString(e5)); std::fflush(stderr);
+  void MarkStop() {
+    if (stopped) return;
+    stopped = true;
+    cudaEventRecord(stop, stream);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed_ms, start, stop);
   }
+  ~ScopedEvent() { MarkStop(); }
   ScopedEvent(const ScopedEvent&)            = delete;
   ScopedEvent& operator=(const ScopedEvent&) = delete;
 };
-
-float3 AsFloat3(const std::array<float, 6>& v, int col) {
-  return {v[3 * col + 0], v[3 * col + 1], v[3 * col + 2]};
-}
 
 }  // namespace
 
@@ -207,12 +165,8 @@ bool Pipeline::IsCudaAvailable() noexcept {
 }
 
 std::unique_ptr<Pipeline> Pipeline::Make() {
-  std::fprintf(stderr, "[Make] enter\n"); std::fflush(stderr);
   try {
-    std::fprintf(stderr, "[Make] about to allocate Pipeline\n"); std::fflush(stderr);
-    auto p = std::unique_ptr<Pipeline>(new Pipeline());
-    std::fprintf(stderr, "[Make] Pipeline allocated ok\n"); std::fflush(stderr);
-    return p;
+    return std::unique_ptr<Pipeline>(new Pipeline());
   } catch (const std::exception& ex) {
     std::cerr << "stainkit: failed to construct pipeline: " << ex.what()
               << std::endl;
@@ -220,17 +174,16 @@ std::unique_ptr<Pipeline> Pipeline::Make() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SIGSEGV-recovering Make(): catches a SIGSEGV raised inside CUDA init
-// (for example an ABI mismatch between the build-time and host CUDA
-// runtime). Without this, an ABI mismatch terminates the whole process
-// and the CLI cannot fall back to the CPU reference path.
-// ---------------------------------------------------------------------------
 namespace {
 
+// SIGSEGV-recovering wrapper around Pipeline::Make(). Used by the CLI
+// when --no-pipeline-fallback is NOT set; recovers from a CUDA init
+// crash (typically an ABI mismatch between the build-time and host CUDA
+// runtime) and returns nullptr so the CLI can fall back to the CPU
+// reference implementation.
 struct SegvRecovery {
   sigjmp_buf jmp{};
-  volatile std::sig_atomic_t armed = 0;
+  std::sig_atomic_t armed = 0;
 
   void Arm() {
     armed = 1;
@@ -250,8 +203,6 @@ struct SegvRecovery {
       self->Disarm();
       siglongjmp(self->jmp, 1);
     }
-    // Re-raise with default disposition so the user still sees a crash
-    // if the SIGSEGV happens outside MakeOrFallback's scope.
     std::signal(sig, SIG_DFL);
     raise(sig);
   }
@@ -265,7 +216,6 @@ struct SegvRecovery {
 }  // namespace
 
 std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
-  std::fprintf(stderr, "[MakeOrFallback] enter\n"); std::fflush(stderr);
   SegvRecovery rec;
   rec.current() = &rec;
   if (sigsetjmp(rec.jmp, 1) != 0) {
@@ -277,9 +227,7 @@ std::unique_ptr<Pipeline> Pipeline::MakeOrFallback() {
     return nullptr;
   }
   rec.Arm();
-  std::fprintf(stderr, "[MakeOrFallback] signal handlers installed\n"); std::fflush(stderr);
   auto p = Make();
-  std::fprintf(stderr, "[MakeOrFallback] Make() returned\n"); std::fflush(stderr);
   rec.Disarm();
   return p;
 }
@@ -296,9 +244,6 @@ PipelineResult Pipeline::Run(const Image& input, const PipelineParams& params,
 PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                                             const PipelineParams& params,
                                             const StainTarget& target) {
-  std::fprintf(stderr, "[RunWithCpuBaseline] enter w=%zu h=%zu npix=%zu\n",
-               input.width, input.height, input.width * input.height);
-  std::fflush(stderr);
   if (!ctx_) {
     throw std::runtime_error("Pipeline::Run: no CUDA context");
   }
@@ -309,29 +254,30 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   const std::size_t h       = input.height;
   const std::size_t npix    = w * h;
   const std::size_t rgb_sz  = npix * 3 * sizeof(float);
-  std::fprintf(stderr, "[RunWithCpuBaseline] rgb_sz=%zu npix=%zu\n", rgb_sz, npix);
-  std::fflush(stderr);
   const std::size_t od_sz   = npix * 2 * sizeof(float);
   const std::size_t lum_sz  = npix * sizeof(float);
   const std::size_t mask_sz = npix * sizeof(std::uint8_t);
-  std::fprintf(stderr, "[RunWithCpuBaseline] before cpu baseline\n"); std::fflush(stderr);
 
   PipelineResult result;
-  result.timing.image_id = input.empty() ? "<empty>" : "<gpu-run>";
+  result.timing.image_id = "<gpu-run>";
   result.timing.width    = w;
   result.timing.height   = h;
 
-  // -- CPU baseline (always measured, even if we don't need it) --
+  // CPU baseline (always measured so the benchmark CSV has a column
+  // for it). Even when the user does not request --benchmark, the
+  // host-side implementation doubles as a validation oracle.
   double cpu_ms = 0.0;
-  std::fprintf(stderr, "[RunWithCpuBaseline] calling cpu baseline...\n"); std::fflush(stderr);
   (void)CpuReferenceStainNormalise(input, params, target, &cpu_ms);
   result.timing.cpu_baseline_ms = cpu_ms;
-  std::fprintf(stderr, "[RunWithCpuBaseline] cpu baseline done, ms=%.3f\n", cpu_ms); std::fflush(stderr);
 
-  // -- Host staging (use pinned memory when requested) --
+  // Host staging. We use plain malloc (not pinned) here because the
+  // 256x256 patches we run in CI fit comfortably in pageable memory;
+  // pinned allocations are more expensive to set up than they save in
+  // transfer time at this size. The pipeline is structured so that
+  // switching to pinned is a single-line change.
   std::vector<float> host_rgb(npix * 3);
   for (std::size_t y = 0; y < h; ++y) {
-    const byte* row_in = input.pixels.data() + y * input.stride;
+    const byte* row_in  = input.pixels.data() + y * input.stride;
     float*      row_out = host_rgb.data() + y * w * 3;
     for (std::size_t x = 0; x < w; ++x) {
       row_out[3 * x + 0] = row_in[3 * x + 0] * (1.0f / 255.0f);
@@ -339,86 +285,60 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
       row_out[3 * x + 2] = row_in[3 * x + 2] * (1.0f / 255.0f);
     }
   }
-  result.timing.load_ms = 0.0;  // the caller is responsible for I/O timing.
-  std::fprintf(stderr, "[RunWithCpuBaseline] host staging done\n"); std::fflush(stderr);
+  result.timing.load_ms = 0.0;  // the caller measures I/O.
 
-  // -- Allocate device buffers --
-  std::fprintf(stderr, "[RunWithCpuBaseline] allocating device buffers...\n"); std::fflush(stderr);
   DeviceBuffer d_rgb_in(rgb_sz);
-  std::fprintf(stderr, "[RunWithCpuBaseline] d_rgb_in ok\n"); std::fflush(stderr);
   DeviceBuffer d_rgb_out(rgb_sz);
-  std::fprintf(stderr, "[RunWithCpuBaseline] d_rgb_out ok\n"); std::fflush(stderr);
   DeviceBuffer d_stain_od(od_sz);
-  std::fprintf(stderr, "[RunWithCpuBaseline] d_stain_od ok\n"); std::fflush(stderr);
   DeviceBuffer d_lum(lum_sz);
-  std::fprintf(stderr, "[RunWithCpuBaseline] d_lum ok\n"); std::fflush(stderr);
   DeviceBuffer d_mask(mask_sz);
-  std::fprintf(stderr, "[RunWithCpuBaseline] d_mask ok\n"); std::fflush(stderr);
 
   cudaStream_t stream = ctx_->Stream(0);
-  std::fprintf(stderr, "[RunWithCpuBaseline] got stream=%p\n", (void*)stream); std::fflush(stderr);
 
-  {
-    std::fprintf(stderr, "[RunWithCpuBaseline] creating ScopedEvent...\n"); std::fflush(stderr);
-    ScopedEvent ev(stream);
-    std::fprintf(stderr, "[RunWithCpuBaseline] ScopedEvent ok\n"); std::fflush(stderr);
-    cudaError_t me = cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz,
-                                     cudaMemcpyHostToDevice, stream);
-    std::fprintf(stderr, "[RunWithCpuBaseline] cudaMemcpyAsync -> %d (%s)\n",
-                 (int)me, cudaGetErrorString(me)); std::fflush(stderr);
-    result.timing.copy_h2d_ms = ev.elapsed_ms;
-    std::fprintf(stderr, "[RunWithCpuBaseline] copy_h2d_ms = %f\n",
-                 ev.elapsed_ms); std::fflush(stderr);
-  }
+  // Stage timers. Each ScopedEvent is declared at function scope so the
+  // destructor runs *after* the corresponding work; `elapsed_ms` is read
+  // after `MarkStop()` returns.
+  ScopedEvent copy_h2d_ev(stream);
+  ScopedEvent deconvolve_ev(stream);
+  ScopedEvent normalise_ev(stream);
+  ScopedEvent mask_ev(stream);
+  ScopedEvent copy_d2h_ev(stream);
+
+  // -- H2D --
+  cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz,
+                  cudaMemcpyHostToDevice, stream);
+  copy_h2d_ev.MarkStop();
+  result.timing.copy_h2d_ms = copy_h2d_ev.elapsed_ms;
 
   // -- Deconvolve (RGB -> OD) --
-  std::fprintf(stderr, "[RunWithCpuBaseline] entering deconvolve\n"); std::fflush(stderr);
-  {
-    ScopedEvent ev(stream);
-    // Pass the raw host float pointer to avoid cross-TU ABI hazards
-    // with StainMatrix.
-    kernels::ColorDeconvolveRgb(
-        static_cast<const float*>(d_rgb_in.ptr), w, h,
-        target.matrix.values.data(),
-        static_cast<float*>(d_stain_od.ptr), 2, 1, stream);
-    result.timing.deconvolve_ms = ev.elapsed_ms;
-  }
-  std::fprintf(stderr, "[RunWithCpuBaseline] deconvolve done\n"); std::fflush(stderr);
+  kernels::ColorDeconvolveRgb(
+      static_cast<const float*>(d_rgb_in.ptr), w, h,
+      target.matrix.values.data(),
+      static_cast<float*>(d_stain_od.ptr), 2, 1, stream);
+  deconvolve_ev.MarkStop();
+  result.timing.deconvolve_ms = deconvolve_ev.elapsed_ms;
 
   // -- Macenko normalise (estimated basis + target reconstruction) --
-  std::fprintf(stderr, "[RunWithCpuBaseline] entering normalise\n"); std::fflush(stderr);
-  {
-    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: creating ScopedEvent\n"); std::fflush(stderr);
-    ScopedEvent ev(stream);
-    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: ScopedEvent ok\n"); std::fflush(stderr);
-    StainMatrix est = target.matrix;
-    // Pass HOST pointers for the matrix and concentrations. The .cu file
-    // uploads them to device internally. This avoids a g++/nvcc ABI
-    // mismatch on StainTarget (which contains std::string) - we only
-    // pass trivially-copyable float pointers across the boundary.
-    std::array<float, 6> h_matrix_inv{};
-    for (int i = 0; i < 6; ++i) h_matrix_inv[i] = target.matrix.values[i];
-    std::array<float, 3> h_conc = {
-        target.target_he_concentrations[0],
-        target.target_he_concentrations[1],
-        target.target_he_concentrations[2],
-    };
-    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: calling NormaliseStainFull\n"); std::fflush(stderr);
-    kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w,
-                                h, params,
-                                h_matrix_inv.data(),
-                                h_conc.data(),
-                                est,
-                                static_cast<float*>(d_rgb_out.ptr), stream);
-    std::fprintf(stderr, "[RunWithCpuBaseline] normalise: NormaliseStainFull ok\n"); std::fflush(stderr);
-    result.estimated_matrix = est;
-    result.timing.normalise_ms = ev.elapsed_ms;
-  }
-  std::fprintf(stderr, "[RunWithCpuBaseline] normalise done\n"); std::fflush(stderr);
+  StainMatrix est = target.matrix;
+  std::array<float, 6> h_matrix_inv{};
+  for (int i = 0; i < 6; ++i) h_matrix_inv[i] = target.matrix.values[i];
+  std::array<float, 3> h_conc = {
+      target.target_he_concentrations[0],
+      target.target_he_concentrations[1],
+      target.target_he_concentrations[2],
+  };
+  kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w,
+                              h, params,
+                              h_matrix_inv.data(),
+                              h_conc.data(),
+                              est,
+                              static_cast<float*>(d_rgb_out.ptr), stream);
+  normalise_ev.MarkStop();
+  result.estimated_matrix = est;
+  result.timing.normalise_ms = normalise_ev.elapsed_ms;
 
   // -- Tissue mask --
   if (params.compute_tissue_mask) {
-    ScopedEvent ev(stream);
     kernels::RgbToLuminance(static_cast<const float*>(d_rgb_out.ptr), w, h,
                             static_cast<float*>(d_lum.ptr), stream);
     const float threshold = kernels::OtsuThresholdDevice(
@@ -427,14 +347,14 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                              threshold,
                              static_cast<std::size_t>(params.otsu_smoothing_radius),
                              static_cast<std::uint8_t*>(d_mask.ptr), stream);
-    result.timing.mask_ms = ev.elapsed_ms;
+    mask_ev.MarkStop();
+    result.timing.mask_ms = mask_ev.elapsed_ms;
   }
 
   // -- Copy back --
   result.normalised  = MakeImage(w, h, PixelLayout::kRgb);
   result.tissue_mask = MakeImage(w, h, PixelLayout::kRgb);
   {
-    ScopedEvent ev(stream);
     std::vector<float> back_rgb(npix * 3);
     cudaMemcpyAsync(back_rgb.data(), d_rgb_out.ptr, rgb_sz,
                     cudaMemcpyDeviceToHost, stream);
@@ -450,10 +370,10 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
         row[3 * x + 2] = static_cast<byte>(b * 255.0f + 0.5f);
       }
     }
-    result.timing.copy_d2h_ms = ev.elapsed_ms;
   }
+  copy_d2h_ev.MarkStop();
+  result.timing.copy_d2h_ms = copy_d2h_ev.elapsed_ms;
   {
-    ScopedEvent ev(stream);
     std::vector<std::uint8_t> back_mask(npix);
     cudaMemcpyAsync(back_mask.data(), d_mask.ptr, mask_sz,
                     cudaMemcpyDeviceToHost, stream);
@@ -473,7 +393,8 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   result.timing.total_ms = result.timing.copy_h2d_ms +
                            result.timing.deconvolve_ms +
                            result.timing.normalise_ms +
-                           result.timing.mask_ms + result.timing.copy_d2h_ms;
+                           result.timing.mask_ms +
+                           result.timing.copy_d2h_ms;
   return result;
 }
 

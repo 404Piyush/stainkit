@@ -187,19 +187,16 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          const float* h_target_conc,
                          StainMatrix& estimated,
                          float* d_out_rgb, cudaStream_t stream) {
-  std::fprintf(stderr, "[NS] enter\n"); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_rgb == nullptr ||
       h_stain_matrix_inv == nullptr || h_target_conc == nullptr) {
     throw std::invalid_argument("NormaliseStainFull: null host/device pointer(s)");
   }
   cudaStream_t s = stream;
-  std::fprintf(stderr, "[NS] got stream=%p\n", (void*)s); std::fflush(stderr);
 
   // 1. Allocate the OD scratch buffer on the device.
   const std::size_t npix    = width * height;
   const std::size_t od_size = npix * 2 * sizeof(float);
   float*            d_od    = nullptr;
-  std::fprintf(stderr, "[NS] cudaMalloc d_od\n"); std::fflush(stderr);
   cudaError_t e_alloc = cudaMalloc(&d_od, od_size);
   if (e_alloc != cudaSuccess) {
     throw std::runtime_error(
@@ -210,32 +207,23 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   // 2. Deconvolve the input into the (H, E) OD channels. We pass the
   //    raw host float pointer to ColorDeconvolveRgb so the cross-.cu
   //    boundary carries only a trivially-copyable pointer type.
-  std::fprintf(stderr, "[NS] ColorDeconvolveRgb\n"); std::fflush(stderr);
   ColorDeconvolveRgb(d_in_rgb, width, height, h_stain_matrix_inv, d_od, 2, 1, s);
-  std::fprintf(stderr, "[NS] ColorDeconv ok\n"); std::fflush(stderr);
 
   // 3. Project OD onto the stain plane.
   float* d_angles = nullptr;
   float* d_mags   = nullptr;
   cudaMalloc(&d_angles, npix * sizeof(float));
   cudaMalloc(&d_mags,   npix * sizeof(float));
-  std::fprintf(stderr, "[NS] ComputeStainPlaneAngles\n"); std::fflush(stderr);
   ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, s);
-  std::fprintf(stderr, "[NS] ComputeAngles ok\n"); std::fflush(stderr);
 
   // 4. Bring angles back to the host and estimate the stain basis.
   std::vector<float> h_angles(npix);
-  std::fprintf(stderr, "[NS] memcpy angles\n"); std::fflush(stderr);
   cudaMemcpyAsync(h_angles.data(), d_angles, npix * sizeof(float),
                   cudaMemcpyDeviceToHost, s);
-  std::fprintf(stderr, "[NS] sync\n"); std::fflush(stderr);
   cudaStreamSynchronize(s);
-  std::fprintf(stderr, "[NS] sync done\n"); std::fflush(stderr);
   const auto hist = BuildAngleHistogram(h_angles);
-  std::fprintf(stderr, "[NS] histogram\n"); std::fflush(stderr);
   estimated       = EstimateStainMatrixFromAngles(
       hist, npix, params.stain_percentile_low, params.stain_percentile_high);
-  std::fprintf(stderr, "[NS] estimated\n"); std::fflush(stderr);
 
   // 5. Reconstruct with the *target* matrix and concentrations. The
   //    full 9-float target matrix (H, E, residual) is built on the host
@@ -246,7 +234,6 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
-  std::fprintf(stderr, "[NS] Reconstruct\n"); std::fflush(stderr);
 
   // Build the full 9-float matrix on the HOST, then upload.
   const std::array<float, 9> h_target_matrix_full = {
@@ -265,7 +252,6 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaStreamSynchronize(s);
   ReconstructKernel<<<static_cast<int>((npix + 255) / 256), 256, 0, s>>>(
       d_od, d_target_matrix_full, d_target_conc, d_out_rgb, npix);
-  std::fprintf(stderr, "[NS] Reconstruct ok\n"); std::fflush(stderr);
   cudaEventRecord(stop, s);
   cudaEventSynchronize(stop);
   float ms = 0.0f;
@@ -278,7 +264,6 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaFree(d_od);
   cudaFree(d_target_matrix_full);
   cudaFree(d_target_conc);
-  std::fprintf(stderr, "[NS] done\n"); std::fflush(stderr);
   return ms;
 }
 

@@ -58,7 +58,6 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const float* h_matrix_values_6,
                          float* d_out_stain_od, int num_stains,
                          int num_streams, cudaStream_t stream) {
-  std::fprintf(stderr, "[CDR] enter w=%zu h=%zu stream=%p\n", width, height, (void*)stream); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_stain_od == nullptr) {
     throw std::invalid_argument("ColorDeconvolveRgb: null device pointer");
   }
@@ -68,7 +67,6 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   if (width == 0 || height == 0) {
     throw std::invalid_argument("ColorDeconvolveRgb: zero-sized image");
   }
-  std::fprintf(stderr, "[CDR] past null check\n"); std::fflush(stderr);
 
   // Build a 3x3 stain matrix on the host. We use the (R, G, B)-column-major
   // form. The third column is taken as the cross product of H and E.
@@ -110,24 +108,18 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   inv[6] = (m[3] * m[7] - m[4] * m[6]) * inv_det;
   inv[7] = (m[1] * m[6] - m[0] * m[7]) * inv_det;
   inv[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
-  std::fprintf(stderr, "[CDR] inverted matrix\n"); std::fflush(stderr);
 
   // Upload the inverse to a small device buffer.
   cudaStream_t s = stream;
   float* d_stain_inv = nullptr;
-  std::fprintf(stderr, "[CDR] about to cudaMalloc\n"); std::fflush(stderr);
   cudaError_t e1 = cudaMalloc(&d_stain_inv, sizeof(float) * 9);
-  std::fprintf(stderr, "[CDR] cudaMalloc returned e1=%d (%s)\n", (int)e1, cudaGetErrorString(e1)); std::fflush(stderr);
   if (e1 != cudaSuccess) {
     throw std::runtime_error(
         std::string("ColorDeconvolveRgb: cudaMalloc failed: ") +
         cudaGetErrorString(e1));
   }
-  std::fprintf(stderr, "[CDR] about to cudaMemcpyAsync d=%p src=%p sz=%zu s=%p\n",
-               d_stain_inv, inv.data(), sizeof(float)*9, (void*)s); std::fflush(stderr);
   cudaError_t e2 = cudaMemcpyAsync(d_stain_inv, inv.data(), sizeof(float) * 9,
                                    cudaMemcpyHostToDevice, s);
-  std::fprintf(stderr, "[CDR] cudaMemcpyAsync returned e2=%d (%s)\n", (int)e2, cudaGetErrorString(e2)); std::fflush(stderr);
   if (e2 != cudaSuccess) {
     cudaFree(d_stain_inv);
     throw std::runtime_error(

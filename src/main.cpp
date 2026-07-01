@@ -219,12 +219,6 @@ int main(int argc, char** argv) {
 
   // -- Discover input images --
   std::vector<fs::path> inputs = stainkit::ListImagesIn(args.input_dir);
-  // Flush any pending stdout before we attempt CUDA init - that way
-  // we can see whether a SIGSEGV happens before or after this print.
-  std::cout.flush();
-  std::cerr.flush();
-  std::fprintf(stderr, "[main] about to call Pipeline::Make\n");
-  std::fflush(stderr);
 
   if (args.num_images >= 0 &&
       static_cast<std::size_t>(args.num_images) < inputs.size()) {
@@ -244,27 +238,16 @@ int main(int argc, char** argv) {
     // between the build-time CUDA runtime (e.g. 12.8) and the host's CUDA
     // driver (e.g. 13.0) doesn't terminate the whole process. We catch
     // the segfault, log it, and fall back to the CPU reference path.
-    std::fprintf(stderr, "[main] about to call MakeOrFallback\n"); std::fflush(stderr);
     pipeline = stainkit::Pipeline::MakeOrFallback();
-    std::fprintf(stderr, "[main] MakeOrFallback returned, pipeline=%p\n",
-                 static_cast<void*>(pipeline.get())); std::fflush(stderr);
   }
   if (pipeline) {
-    std::fprintf(stderr, "[main] about to call DeviceName\n"); std::fflush(stderr);
-    std::string devname = pipeline->DeviceName();
-    std::fprintf(stderr, "[main] DeviceName returned: %s\n", devname.c_str()); std::fflush(stderr);
-    std::cout << "stainkit: using GPU: " << devname << "\n";
-    std::fprintf(stderr, "[main] printed GPU line\n"); std::fflush(stderr);
-    std::cout.flush();
+    std::cout << "stainkit: using GPU: " << pipeline->DeviceName() << "\n";
   } else {
     std::cout << "stainkit: CUDA unavailable — falling back to CPU "
                  "reference implementation\n";
   }
-  std::fprintf(stderr, "[main] past if(pipeline) check\n"); std::fflush(stderr);
 
   // -- Process loop --
-  std::fprintf(stderr, "[main] entering process loop with %zu images\n",
-               inputs.size()); std::fflush(stderr);
   std::vector<stainkit::BenchmarkRecord> bench;
   bench.reserve(inputs.size());
 
@@ -286,11 +269,7 @@ int main(int argc, char** argv) {
     const fs::path    out_viz = args.output_dir / (stem + "_panel.png");
 
     if (pipeline) {
-      std::fprintf(stderr, "[main] image %zu about to call RunWithCpuBaseline\n",
-                   idx); std::fflush(stderr);
       const auto rr = pipeline->RunWithCpuBaseline(img, params, target);
-      std::fprintf(stderr, "[main] image %zu RunWithCpuBaseline returned\n",
-                   idx); std::fflush(stderr);
       stainkit::WriteImage(rr.normalised, out_png);
       if (args.compute_mask) {
         stainkit::WriteImage(rr.tissue_mask, out_msk);
