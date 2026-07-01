@@ -1,16 +1,25 @@
 # stainkit
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![CUDA](https://img.shields.io/badge/CUDA-12.x-76b900.svg)](https://developer.nvidia.com/cuda-toolkit)
-[![C++17](https://img.shields.io/badge/C%2B%2B-17-00599c.svg)](https://isocpp.org/)
-[![CMake](https://img.shields.io/badge/CMake-3.18%2B-064f8c.svg)](https://cmake.org/)
+<p align="center">
+  <img src="docs/screenshots/logo.png" alt="stainkit" width="180">
+</p>
 
-> **GPU-accelerated H&E stain normalization for digital pathology.**
->
-> Implements the Macenko (2009) stain normalization and Ruifrok-Johnston
-> (2001) color deconvolution algorithms on CUDA. Designed to be
-> embedded in whole-slide image pipelines where dozens of slides must
-> be processed per hour and per-slide latency matters.
+<p align="center">
+  <strong>GPU-accelerated H&E stain normalization for digital pathology.</strong>
+</p>
+
+<p align="center">
+  <a href="https://stainkit.404piyush.me/"><img alt="Live demo" src="https://img.shields.io/badge/demo-stainkit.404piyush.me-crimson"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg"></a>
+  <a href="https://developer.nvidia.com/cuda-toolkit"><img alt="CUDA" src="https://img.shields.io/badge/CUDA-12.x-76b900.svg"></a>
+  <a href="https://isocpp.org/"><img alt="C++17" src="https://img.shields.io/badge/C%2B%2B-17-00599c.svg"></a>
+  <a href="https://cmake.org/"><img alt="CMake" src="https://img.shields.io/badge/CMake-3.18%2B-064f8c.svg"></a>
+</p>
+
+Implements the Macenko (2009) stain normalization and Ruifrok-Johnston
+(2001) color deconvolution algorithms on CUDA. Designed to be
+embedded in whole-slide image pipelines where dozens of slides must
+be processed per hour and per-slide latency matters.
 
 ---
 
