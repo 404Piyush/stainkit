@@ -36,7 +36,8 @@ Highlights:
   and a CPU reference implementation for ground-truth comparison.
 * **Reproducible.** CMake build, GoogleTest suite, GitHub Actions CI,
   Docker image, Colab notebook, **live GPU demo** at
-  <https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run>.
+  <https://stainkit.404piyush.me/>. Vercel frontend + Lightning T4
+  backend; auto-sleep when idle (~3s cold-start on first request).
 
 ---
 

@@ -19,29 +19,33 @@ https://github.com/404Piyush/stainkit
 ## Project Presentation / Demonstration URL
 
 ```
-https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run
+https://stainkit.404piyush.me/
 ```
 
-A **live, GPU-accelerated demo** hosted on Modal Labs' free tier
-($30/month credit, real T4 GPU). POST a PNG/JPEG H&E patch to
-`/normalize` and get back the stain-normalised image + tissue mask
-+ 3-panel visualisation as base64-encoded PNGs.
+A **live, GPU-accelerated demo**. Custom domain on Vercel serves a
+single-page upload form. POSTs to a FastAPI backend running on a
+Lightning AI Studio (Tesla T4 GPU) which shells out to the stainkit
+CLI and returns the stain-normalised image + tissue mask + 3-panel
+visualisation as base64-encoded PNGs.
 
-Health check:
+Health check (backend):
 ```bash
-curl https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run/healthz
-# {"status":"ok","gpu":"T4"}
+curl https://stainkit.404piyush.me/?backend=https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai \
+     | head
+# (HTML page served)
+curl https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai/healthz
+# {"status":"ok","binary":"/teamspace/studios/this_studio/stainkit/build/bin/stainkit",...}
 ```
 
-Inference request:
+Inference request (multipart):
 ```bash
 curl -X POST \
-     -H "Content-Type: image/png" \
-     --data-binary @docs/screenshots/sample_000_panel.png \
-     https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run/normalize
+     -F "file=@docs/screenshots/sample_000_panel.png;type=image/png" \
+     https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai/normalize
 ```
 
-Latency on T4: ~1.2s warm, ~3s cold start (container idle-timeout 120s).
+Latency on T4: ~400 ms warm, ~3 s cold start (Lightning Studio
+auto-sleeps after 60 s idle and wakes on the next request).
 
 Alternative:
 ```
