@@ -103,7 +103,10 @@ struct StainMatrix {
 // Target / reference staining — what the *output* image should look like.
 // ---------------------------------------------------------------------------
 struct StainTarget {
-  float3 target_he_concentrations{{0.65f, 0.70f, 0.29f}};
+  // Per-stain scale factors applied to the source H, E concentrations
+  // during reconstruction. 1.0 means passthrough (preserve per-pixel
+  // variation). Values <1.0 lighten the stain, >1.0 darken it.
+  float3 target_he_concentrations{{1.0f, 1.0f, 1.0f}};
   StainMatrix matrix = StainMatrix::Identity();
   float background_lab = 255.0f;
   std::string name = "default";

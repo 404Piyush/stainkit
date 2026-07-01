@@ -140,6 +140,8 @@ Image CpuReferenceStainNormalise(const Image& input,
   std::array<float, 9> stain_inv = Invert3x3(stain);
 
   // ---- 4. Reconstruct with the *target* matrix ----
+  // Treat target_he_concentrations as per-stain scale factors applied to
+  // the per-pixel source concentrations (default 1.0 = passthrough).
   const float3& th = target.target_he_concentrations;
   // Target basis columns — taken from the user-supplied target matrix.
   const std::array<float, 9> target_stain = {
@@ -152,9 +154,10 @@ Image CpuReferenceStainNormalise(const Image& input,
   for (std::size_t i = 0; i < w * h; ++i) {
     // Project onto the source basis to get per-pixel H, E concentrations.
     const float3 c_src = MatVec(stain_inv, od[i]);
-    // Map to the target basis: replace concentrations with target values,
-    // then re-encode.
-    const float3 c_target = {th[0], th[1], c_src[2]};
+    // Scale the source concentrations toward the target staining. This
+    // preserves per-pixel variation (so tissue structure is visible) while
+    // shifting the global colour appearance toward the target reference.
+    const float3 c_target = {c_src[0] * th[0], c_src[1] * th[1], c_src[2]};
     const float3 od_recon = MatVec(target_stain, c_target);
     const float3 rgb = {std::exp(-od_recon[0]), std::exp(-od_recon[1]),
                         std::exp(-od_recon[2])};

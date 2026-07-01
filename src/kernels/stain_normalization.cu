@@ -56,16 +56,23 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
   if (idx >= npix)
     return;
   const std::size_t base = 3 * idx;
+  // Use the per-pixel H, E concentrations from the input deconvolution,
+  // then map them through the target stain matrix. This preserves the
+  // spatial variation of the source image while changing its stain
+  // appearance to the target.
   const float h = d_in_stain_od[2 * idx + 0];
   const float e = d_in_stain_od[2 * idx + 1];
-  // Use the user-supplied concentrations for H and E, and reuse the
-  // original residual for the third channel.
-  const float c0 = d_target_conc[0];
-  const float c1 = d_target_conc[1];
-  // d_target_matrix is 9 floats: columns are H, E, residual.
-  const float od_r = d_target_matrix[0] * c0 + d_target_matrix[3] * c1;
-  const float od_g = d_target_matrix[1] * c0 + d_target_matrix[4] * c1;
-  const float od_b = d_target_matrix[2] * c0 + d_target_matrix[5] * c1;
+  // d_target_conc provides optional per-stain scaling (1.0 = passthrough).
+  const float scale_h = d_target_conc[0];
+  const float scale_e = d_target_conc[1];
+  // d_target_matrix is 9 floats in column-major form: column 0 is H,
+  // column 1 is E, column 2 is residual. We only use the H and E columns.
+  const float od_r = d_target_matrix[0] * (h * scale_h) +
+                     d_target_matrix[3] * (e * scale_e);
+  const float od_g = d_target_matrix[1] * (h * scale_h) +
+                     d_target_matrix[4] * (e * scale_e);
+  const float od_b = d_target_matrix[2] * (h * scale_h) +
+                     d_target_matrix[5] * (e * scale_e);
   d_out_rgb[base + 0] = __expf(-od_r);
   d_out_rgb[base + 1] = __expf(-od_g);
   d_out_rgb[base + 2] = __expf(-od_b);
