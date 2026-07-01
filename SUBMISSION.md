@@ -16,25 +16,38 @@ stainkit: GPU-Accelerated H&E Stain Normalization for Digital Pathology
 https://github.com/404Piyush/stainkit
 ```
 
-## Project Presentation / Demonstration URL (optional)
+## Project Presentation / Demonstration URL
 
-Two options:
+```
+https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run
+```
 
-1. **Live Colab notebook** (runnable in browser, no setup):
-   ```
-   https://colab.research.google.com/github/404Piyush/stainkit/blob/main/colab_notebook.ipynb
-   ```
+A **live, GPU-accelerated demo** hosted on Modal Labs' free tier
+($30/month credit, real T4 GPU). POST a PNG/JPEG H&E patch to
+`/normalize` and get back the stain-normalised image + tissue mask
++ 3-panel visualisation as base64-encoded PNGs.
 
-2. **Pre-recorded demo on YouTube** (optional):
-   ```
-   [link here if you record one]
-   ```
-   Suggested 5-minute flow:
-   - clone the repo and run `./install.sh` on a CUDA host
-   - show `nvidia-smi` to confirm GPU visibility
-   - run `./run.sh --benchmark` on the sample dataset
-   - show the per-image GPU vs CPU timing table from the CSV
-   - open one of the panel PNGs in `docs/screenshots/`
+Health check:
+```bash
+curl https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run/healthz
+# {"status":"ok","gpu":"T4"}
+```
+
+Inference request:
+```bash
+curl -X POST \
+     -H "Content-Type: image/png" \
+     --data-binary @docs/screenshots/sample_000_panel.png \
+     https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run/normalize
+```
+
+Latency on T4: ~1.2s warm, ~3s cold start (container idle-timeout 120s).
+
+Alternative:
+```
+https://colab.research.google.com/github/404Piyush/stainkit/blob/main/colab_notebook.ipynb
+```
+(runnable Colab notebook, T4 GPU, ~5 min end-to-end demo)
 
 ## Proof of Execution Artifacts (upload file)
 

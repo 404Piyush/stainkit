@@ -35,7 +35,8 @@ Highlights:
 * **Quantifiable.** Per-image timing columns for every pipeline stage
   and a CPU reference implementation for ground-truth comparison.
 * **Reproducible.** CMake build, GoogleTest suite, GitHub Actions CI,
-  Docker image, Colab notebook.
+  Docker image, Colab notebook, **live GPU demo** at
+  <https://piyushutkarxb--stainkit-demo-fastapi-app.modal.run>.
 
 ---
 
