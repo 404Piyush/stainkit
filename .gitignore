@@ -60,6 +60,7 @@ env/
 .DS_Store
 
 # Data (large datasets downloaded at runtime)
+# Raw input: whole-slide images can be multi-GB; never commit them.
 data/raw/*.svs
 data/raw/*.tiff
 data/raw/*.tif
@@ -67,11 +68,17 @@ data/raw/*.ndpi
 data/raw/*.mrxs
 data/raw/*.vms
 data/raw/*.scn
+# Processed outputs: per-image PNGs are kept in docs/screenshots/ for
+# the README. The raw processed/ tree is intentionally ignored so the
+# repo doesn't fill up with thousands of panel PNGs.
 data/processed/*.png
 data/processed/*.jpg
 data/processed/*.tiff
 data/processed/*.tif
-data/benchmark/*.csv
+# Benchmark CSVs and PNGs are small (a few KB) and useful as proof of
+# execution - track them in the repo. Larger benchmark plots live in
+# docs/screenshots/ instead.
+!data/benchmark/*.csv
 data/benchmark/*.png
 data/benchmark/*.json
 
@@ -80,9 +87,12 @@ data/benchmark/*.json
 !data/processed/.gitkeep
 !data/benchmark/.gitkeep
 
-# Logs
+# Logs (sample_run_256.log under data/benchmark/ IS tracked - it's
+# a proof-of-execution artifact; other *.log files like
+# CMakeFiles/*/cmake_output.log are not).
 *.log
 logs/
+!data/benchmark/*.log
 
 # OS-specific
 Thumbs.db

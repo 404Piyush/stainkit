@@ -1,0 +1,14 @@
+stainkit: 0.1.0 — processing 10 image(s) from "data/raw"
+stainkit: using GPU: Tesla T4
+  [1/10] sample_000  GPU=6.65ms  CPU=6.83ms  wall=40.47ms
+  [2/10] sample_001  GPU=5.30ms  CPU=5.93ms  wall=39.31ms
+  [3/10] sample_002  GPU=5.07ms  CPU=5.95ms  wall=38.61ms
+  [4/10] sample_003  GPU=4.92ms  CPU=5.96ms  wall=38.87ms
+  [5/10] sample_004  GPU=4.92ms  CPU=5.78ms  wall=38.54ms
+  [6/10] sample_005  GPU=4.80ms  CPU=6.05ms  wall=38.70ms
+  [7/10] sample_006  GPU=4.97ms  CPU=5.59ms  wall=40.01ms
+  [8/10] sample_007  GPU=5.58ms  CPU=6.79ms  wall=41.51ms
+  [9/10] sample_008  GPU=4.93ms  CPU=5.82ms  wall=37.09ms
+  [10/10] sample_009  GPU=5.03ms  CPU=5.79ms  wall=38.47ms
+stainkit: benchmark CSV written to "data/benchmark/run10.csv"
+stainkit: done — outputs in "data/processed"
