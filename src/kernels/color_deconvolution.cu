@@ -52,17 +52,13 @@ __global__ void DeconvolveKernel(const float* __restrict__ d_in,
   (void)c2;
 }
 
-inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
-}
-
 }  // namespace
 
 float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const float* h_matrix_values_6,
                          float* d_out_stain_od, int num_stains,
-                         int num_streams, void* stream) {
-  std::fprintf(stderr, "[CDR] enter w=%zu h=%zu\n", width, height); std::fflush(stderr);
+                         int num_streams, cudaStream_t stream) {
+  std::fprintf(stderr, "[CDR] enter w=%zu h=%zu stream=%p\n", width, height, (void*)stream); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_stain_od == nullptr) {
     throw std::invalid_argument("ColorDeconvolveRgb: null device pointer");
   }
@@ -116,11 +112,8 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   inv[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
   std::fprintf(stderr, "[CDR] inverted matrix\n"); std::fflush(stderr);
 
-  // Upload the inverse to a small device buffer. This is safer than
-  // cudaMemcpyToSymbolAsync (which segfaulted on Colab's runtime).
-  std::fprintf(stderr, "[CDR] about to AsStream\n"); std::fflush(stderr);
-  cudaStream_t s = AsStream(stream);
-  std::fprintf(stderr, "[CDR] AsStream returned stream=%p\n", (void*)s); std::fflush(stderr);
+  // Upload the inverse to a small device buffer.
+  cudaStream_t s = stream;
   float* d_stain_inv = nullptr;
   std::fprintf(stderr, "[CDR] about to cudaMalloc\n"); std::fflush(stderr);
   cudaError_t e1 = cudaMalloc(&d_stain_inv, sizeof(float) * 9);

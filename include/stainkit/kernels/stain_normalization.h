@@ -18,6 +18,7 @@
 #ifndef STK_INCLUDE_STAINKIT_KERNELS_STAIN_NORMALIZATION_H_
 #define STK_INCLUDE_STAINKIT_KERNELS_STAIN_NORMALIZATION_H_
 
+#include <cuda_runtime.h>
 #include <cstddef>
 
 #include "stainkit/types.h"
@@ -32,7 +33,8 @@ namespace kernels {
 // Output `d_magnitudes` is non-negative.
 void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
                              std::size_t height, float* d_out_angles,
-                             float* d_out_magnitudes, void* stream = nullptr);
+                             float* d_out_magnitudes,
+                             cudaStream_t stream = 0);
 
 // ---------------------------------------------------------------------------
 // Stage 2: estimate the 3x2 stain matrix from the angle histogram.
@@ -44,8 +46,7 @@ void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
 // supplied; otherwise the user can leave it zeroed.
 StainMatrix EstimateStainMatrixFromAngles(
     const std::vector<int>& histogram, std::size_t total_pixels,
-    float percentile_low, float percentile_high,
-    const StainMatrix& target_matrix = StainMatrix::Identity());
+    float percentile_low, float percentile_high);
 
 // Helper that builds the histogram on the host side (cheap, ~360 bins).
 std::vector<int> BuildAngleHistogram(const std::vector<float>& angles);
@@ -63,7 +64,7 @@ std::vector<int> BuildAngleHistogram(const std::vector<float>& angles);
 void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
                              std::size_t height, const float* h_target_matrix_6,
                              const float* h_target_conc_3, float* d_out_rgb,
-                             void* stream = nullptr);
+                             cudaStream_t stream = 0);
 
 // ---------------------------------------------------------------------------
 // One-shot helper that runs the full pipeline for a single image.
@@ -83,7 +84,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          const float* h_stain_matrix_inv,
                          const float* h_target_conc,
                          StainMatrix& estimated,
-                         float* d_out_rgb, void* stream = nullptr);
+                         float* d_out_rgb, cudaStream_t stream = 0);
 
 }  // namespace kernels
 }  // namespace stainkit

@@ -69,15 +69,11 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
   d_out_rgb[base + 2] = __expf(-od_b);
 }
 
-inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
-}
-
 }  // namespace
 
 void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
                              std::size_t height, float* d_out_angles,
-                             float* d_out_magnitudes, void* stream) {
+                             float* d_out_magnitudes, cudaStream_t stream) {
   if (d_in_stain_od == nullptr || d_out_angles == nullptr ||
       d_out_magnitudes == nullptr) {
     throw std::invalid_argument(
@@ -86,9 +82,8 @@ void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
   const std::size_t npix  = width * height;
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
-  cudaStream_t      s     = AsStream(stream);
-  AngleKernel<<<grid, block, 0, s>>>(d_in_stain_od, d_out_angles,
-                                      d_out_magnitudes, npix);
+  AngleKernel<<<grid, block, 0, stream>>>(d_in_stain_od, d_out_angles,
+                                          d_out_magnitudes, npix);
 }
 
 std::vector<int> BuildAngleHistogram(const std::vector<float>& angles) {
@@ -105,9 +100,7 @@ std::vector<int> BuildAngleHistogram(const std::vector<float>& angles) {
 
 StainMatrix EstimateStainMatrixFromAngles(
     const std::vector<int>& histogram, std::size_t total_pixels,
-    float percentile_low, float percentile_high,
-    const StainMatrix& target_matrix) {
-  (void)target_matrix;
+    float percentile_low, float percentile_high) {
   if (histogram.empty() || total_pixels == 0) {
     return StainMatrix::Identity();
   }
@@ -152,7 +145,7 @@ StainMatrix EstimateStainMatrixFromAngles(
 void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
                              std::size_t height, const float* h_target_matrix_6,
                              const float* h_target_conc_3, float* d_out_rgb,
-                             void* stream) {
+                             cudaStream_t stream) {
   if (d_in_stain_od == nullptr || d_out_rgb == nullptr ||
       h_target_matrix_6 == nullptr || h_target_conc_3 == nullptr) {
     throw std::invalid_argument(
@@ -173,18 +166,17 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
   float*       d_target_conc   = nullptr;
   cudaMalloc(&d_target_matrix, sizeof(float) * 9);
   cudaMalloc(&d_target_conc, sizeof(float) * 3);
-  cudaStream_t s = AsStream(stream);
   cudaMemcpyAsync(d_target_matrix, target_matrix.data(), sizeof(float) * 9,
-                  cudaMemcpyHostToDevice, s);
+                  cudaMemcpyHostToDevice, stream);
   cudaMemcpyAsync(d_target_conc, target_conc.data(), sizeof(float) * 3,
-                  cudaMemcpyHostToDevice, s);
+                  cudaMemcpyHostToDevice, stream);
 
   const std::size_t npix  = width * height;
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
-  ReconstructKernel<<<grid, block, 0, s>>>(d_in_stain_od, d_target_matrix,
-                                          d_target_conc, d_out_rgb, npix);
-  cudaStreamSynchronize(s);
+  ReconstructKernel<<<grid, block, 0, stream>>>(d_in_stain_od, d_target_matrix,
+                                                d_target_conc, d_out_rgb, npix);
+  cudaStreamSynchronize(stream);
   cudaFree(d_target_matrix);
   cudaFree(d_target_conc);
 }
@@ -194,14 +186,14 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          const float* h_stain_matrix_inv,
                          const float* h_target_conc,
                          StainMatrix& estimated,
-                         float* d_out_rgb, void* stream) {
+                         float* d_out_rgb, cudaStream_t stream) {
   std::fprintf(stderr, "[NS] enter\n"); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_rgb == nullptr ||
       h_stain_matrix_inv == nullptr || h_target_conc == nullptr) {
     throw std::invalid_argument("NormaliseStainFull: null host/device pointer(s)");
   }
-  cudaStream_t s = AsStream(stream);
-  std::fprintf(stderr, "[NS] got stream\n"); std::fflush(stderr);
+  cudaStream_t s = stream;
+  std::fprintf(stderr, "[NS] got stream=%p\n", (void*)s); std::fflush(stderr);
 
   // 1. Allocate the OD scratch buffer on the device.
   const std::size_t npix    = width * height;
@@ -219,7 +211,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   //    raw host float pointer to ColorDeconvolveRgb so the cross-.cu
   //    boundary carries only a trivially-copyable pointer type.
   std::fprintf(stderr, "[NS] ColorDeconvolveRgb\n"); std::fflush(stderr);
-  ColorDeconvolveRgb(d_in_rgb, width, height, h_stain_matrix_inv, d_od, 2, 1, &s);
+  ColorDeconvolveRgb(d_in_rgb, width, height, h_stain_matrix_inv, d_od, 2, 1, s);
   std::fprintf(stderr, "[NS] ColorDeconv ok\n"); std::fflush(stderr);
 
   // 3. Project OD onto the stain plane.
@@ -228,7 +220,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaMalloc(&d_angles, npix * sizeof(float));
   cudaMalloc(&d_mags,   npix * sizeof(float));
   std::fprintf(stderr, "[NS] ComputeStainPlaneAngles\n"); std::fflush(stderr);
-  ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, &s);
+  ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, s);
   std::fprintf(stderr, "[NS] ComputeAngles ok\n"); std::fflush(stderr);
 
   // 4. Bring angles back to the host and estimate the stain basis.

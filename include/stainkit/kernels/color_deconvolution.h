@@ -15,6 +15,7 @@
 #ifndef STK_INCLUDE_STAINKIT_KERNELS_COLOR_DECONVOLUTION_H_
 #define STK_INCLUDE_STAINKIT_KERNELS_COLOR_DECONVOLUTION_H_
 
+#include <cuda_runtime.h>
 #include <cstddef>
 
 #include "stainkit/types.h"
@@ -41,7 +42,7 @@ namespace kernels {
 float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const float* h_matrix_values_6,
                          float* d_out_stain_od, int num_stains = 2,
-                         int num_streams = 1, void* stream = nullptr);
+                         int num_streams = 1, cudaStream_t stream = 0);
 
 }  // namespace kernels
 }  // namespace stainkit

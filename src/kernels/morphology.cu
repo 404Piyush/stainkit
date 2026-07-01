@@ -87,15 +87,13 @@ __global__ void MorphColKernel(const std::uint8_t* __restrict__ d_in,
   d_out[y * width + x] = acc;
 }
 
-inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
-}
+}  // namespace
 
 void DispatchRow(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
-                 std::size_t h, int radius, bool is_max, void* stream) {
+                 std::size_t h, int radius, bool is_max, cudaStream_t stream) {
   if (radius <= 0) {
     cudaMemcpyAsync(d_out, d_in, w * h * sizeof(std::uint8_t),
-                    cudaMemcpyDeviceToDevice, AsStream(stream));
+                    cudaMemcpyDeviceToDevice, stream);
     return;
   }
   if (radius > 64) {
@@ -105,15 +103,15 @@ void DispatchRow(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
   dim3 grid(static_cast<unsigned int>((w + block.x - 1) / block.x),
             static_cast<unsigned int>((h + block.y - 1) / block.y));
   size_t smem = (block.x + 128) * sizeof(std::uint8_t);
-  MorphRowKernel<<<grid, block, smem, AsStream(stream)>>>(d_in, d_out, w, h,
-                                                          radius, is_max);
+  MorphRowKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h,
+                                                radius, is_max);
 }
 
 void DispatchCol(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
-                 std::size_t h, int radius, bool is_max, void* stream) {
+                 std::size_t h, int radius, bool is_max, cudaStream_t stream) {
   if (radius <= 0) {
     cudaMemcpyAsync(d_out, d_in, w * h * sizeof(std::uint8_t),
-                    cudaMemcpyDeviceToDevice, AsStream(stream));
+                    cudaMemcpyDeviceToDevice, stream);
     return;
   }
   if (radius > 64) {
@@ -123,14 +121,12 @@ void DispatchCol(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
   dim3 grid(static_cast<unsigned int>((w + block.x - 1) / block.x),
             static_cast<unsigned int>((h + block.y - 1) / block.y));
   size_t smem = (block.y + 128) * sizeof(std::uint8_t);
-  MorphColKernel<<<grid, block, smem, AsStream(stream)>>>(d_in, d_out, w, h,
-                                                          radius, is_max);
+  MorphColKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h,
+                                                radius, is_max);
 }
 
-}  // namespace
-
 void Erode(std::uint8_t* d_io, std::size_t width, std::size_t height,
-           std::size_t radius, void* stream) {
+           std::size_t radius, cudaStream_t stream) {
   if (d_io == nullptr) return;
   // Erosion = min over SE. We ping-pong through a scratch buffer.
   std::uint8_t* d_scratch = nullptr;
@@ -143,7 +139,7 @@ void Erode(std::uint8_t* d_io, std::size_t width, std::size_t height,
 }
 
 void Dilate(std::uint8_t* d_io, std::size_t width, std::size_t height,
-            std::size_t radius, void* stream) {
+            std::size_t radius, cudaStream_t stream) {
   if (d_io == nullptr) return;
   std::uint8_t* d_scratch = nullptr;
   cudaMalloc(&d_scratch, width * height * sizeof(std::uint8_t));
@@ -155,14 +151,14 @@ void Dilate(std::uint8_t* d_io, std::size_t width, std::size_t height,
 }
 
 void Open(std::uint8_t* d_io, std::size_t width, std::size_t height,
-          std::size_t radius, void* stream) {
+          std::size_t radius, cudaStream_t stream) {
   if (radius == 0) return;
   Erode(d_io, width, height, radius, stream);
   Dilate(d_io, width, height, radius, stream);
 }
 
 void Close(std::uint8_t* d_io, std::size_t width, std::size_t height,
-           std::size_t radius, void* stream) {
+           std::size_t radius, cudaStream_t stream) {
   if (radius == 0) return;
   Dilate(d_io, width, height, radius, stream);
   Erode(d_io, width, height, radius, stream);
