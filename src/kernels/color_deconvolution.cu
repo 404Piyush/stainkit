@@ -118,9 +118,13 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
 
   // Upload the inverse to a small device buffer. This is safer than
   // cudaMemcpyToSymbolAsync (which segfaulted on Colab's runtime).
+  std::fprintf(stderr, "[CDR] about to AsStream\n"); std::fflush(stderr);
   cudaStream_t s = AsStream(stream);
+  std::fprintf(stderr, "[CDR] AsStream returned stream=%p\n", (void*)s); std::fflush(stderr);
   float* d_stain_inv = nullptr;
+  std::fprintf(stderr, "[CDR] about to cudaMalloc\n"); std::fflush(stderr);
   cudaError_t e1 = cudaMalloc(&d_stain_inv, sizeof(float) * 9);
+  std::fprintf(stderr, "[CDR] cudaMalloc returned e1=%d (%s)\n", (int)e1, cudaGetErrorString(e1)); std::fflush(stderr);
   if (e1 != cudaSuccess) {
     throw std::runtime_error(
         std::string("ColorDeconvolveRgb: cudaMalloc failed: ") +
