@@ -33,13 +33,15 @@ RUN pip install --no-cache-dir --quiet numpy matplotlib
 
 WORKDIR /work
 
-# Pre-fetch the third-party single-header stb image library.
-ARG STB_VERSION=2.28
+# Pre-fetch the third-party single-header stb image library. The
+# stb repository ships only on the `master` branch - there are no
+# version tags.
+ARG STB_REF=master
 RUN mkdir -p third_party/stb && \
-    wget -qO third_party/stb/stb_image.h \
-        https://raw.githubusercontent.com/nothings/stb/${STB_VERSION}/stb_image.h && \
-    wget -qO third_party/stb/stb_image_write.h \
-        https://raw.githubusercontent.com/nothings/stb/${STB_VERSION}/stb_image_write.h
+    curl -fsSL -o third_party/stb/stb_image.h \
+        https://raw.githubusercontent.com/nothings/stb/${STB_REF}/stb_image.h && \
+    curl -fsSL -o third_party/stb/stb_image_write.h \
+        https://raw.githubusercontent.com/nothings/stb/${STB_REF}/stb_image_write.h
 
 # Copy the rest of the source. Doing this in two COPY commands lets the
 # builder cache the third-party download above.

@@ -44,7 +44,7 @@ Highlights:
 ### On a CUDA machine (Linux / macOS / WSL2)
 
 ```bash
-git clone https://github.com/<your-org>/stainkit.git
+git clone https://github.com/404Piyush/stainkit.git
 cd stainkit
 ./install.sh
 ./run.sh

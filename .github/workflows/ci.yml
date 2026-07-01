@@ -69,12 +69,17 @@ jobs:
           pip install --quiet numpy matplotlib
 
       - name: Fetch stb_image
+        # The stb repo only ships on the `master` branch — there are no
+        # version tags. Use curl (more portable than wget on minimal
+        # images) and retry on transient network errors.
         run: |
           mkdir -p third_party/stb
-          wget -qO third_party/stb/stb_image.h \
-            https://raw.githubusercontent.com/nothings/stb/v2.28/stb_image.h
-          wget -qO third_party/stb/stb_image_write.h \
-            https://raw.githubusercontent.com/nothings/stb/v2.28/stb_image_write.h
+          curl -fsSL --retry 3 -o third_party/stb/stb_image.h \
+            https://raw.githubusercontent.com/nothings/stb/master/stb_image.h
+          curl -fsSL --retry 3 -o third_party/stb/stb_image_write.h \
+            https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h
+          ls -la third_party/stb/
+          head -1 third_party/stb/stb_image.h
 
       - name: Configure
         run: |
