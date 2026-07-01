@@ -88,7 +88,7 @@ __global__ void MorphColKernel(const std::uint8_t* __restrict__ d_in,
 }
 
 inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *reinterpret_cast<cudaStream_t*>(&s);
+  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
 }
 
 void DispatchRow(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,

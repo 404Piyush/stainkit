@@ -53,7 +53,7 @@ __global__ void DeconvolveKernel(const float* __restrict__ d_in,
 }
 
 inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *reinterpret_cast<cudaStream_t*>(&s);
+  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
 }
 
 }  // namespace

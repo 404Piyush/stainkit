@@ -70,7 +70,7 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
 }
 
 inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *reinterpret_cast<cudaStream_t*>(&s);
+  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
 }
 
 }  // namespace

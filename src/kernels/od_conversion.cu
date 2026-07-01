@@ -55,7 +55,7 @@ __global__ void RgbToLumaKernel(const float* __restrict__ in,
 }
 
 inline cudaStream_t AsStream(void* s) {
-  return (s == nullptr) ? 0 : *reinterpret_cast<cudaStream_t*>(&s);
+  return (s == nullptr) ? 0 : *static_cast<cudaStream_t*>(s);
 }
 
 }  // namespace
@@ -66,7 +66,7 @@ void RgbToOd(float* d_io, std::size_t width, std::size_t height, void* stream) {
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
   cudaStream_t      s     = (stream == nullptr) ? 0
-                                              : *reinterpret_cast<cudaStream_t*>(&stream);
+                                              : *static_cast<cudaStream_t*>(stream);
   RgbToOdKernel<<<grid, block, 0, s>>>(d_io, d_io, npix);
 }
 
@@ -77,7 +77,7 @@ void RgbToOd(const float* d_in, float* d_out, std::size_t width,
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
   cudaStream_t      s     = (stream == nullptr) ? 0
-                                              : *reinterpret_cast<cudaStream_t*>(&stream);
+                                              : *static_cast<cudaStream_t*>(stream);
   RgbToOdKernel<<<grid, block, 0, s>>>(d_in, d_out, npix);
 }
 
@@ -88,7 +88,7 @@ void OdToRgb(const float* d_in, float* d_out, std::size_t width,
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
   cudaStream_t      s     = (stream == nullptr) ? 0
-                                              : *reinterpret_cast<cudaStream_t*>(&stream);
+                                              : *static_cast<cudaStream_t*>(stream);
   OdToRgbKernel<<<grid, block, 0, s>>>(d_in, d_out, npix);
 }
 
@@ -99,7 +99,7 @@ void RgbToLuma(const float* d_in, float* d_out, std::size_t width,
   const int         block = 256;
   const int         grid  = static_cast<int>((npix + block - 1) / block);
   cudaStream_t      s     = (stream == nullptr) ? 0
-                                              : *reinterpret_cast<cudaStream_t*>(&stream);
+                                              : *static_cast<cudaStream_t*>(stream);
   RgbToLumaKernel<<<grid, block, 0, s>>>(d_in, d_out, npix);
 }
 
