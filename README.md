@@ -261,19 +261,23 @@ mathematical details live in [`docs/algorithms.md`](docs/algorithms.md).
 
 ## Performance
 
-A representative run on a Colab T4 (sm_75) on 100 PatchCamelyon
-96×96 patches:
+A representative run on a Colab T4 (sm_75) on 10 synthetic H&E patches
+at 256x256 RGB (see [`docs/benchmarks.md`](docs/benchmarks.md) for the
+full table):
 
 | Stage                  | CPU (ms/img) | GPU (ms/img) | Speedup |
 | ---------------------- | -----------: | -----------: | ------: |
-| Color deconvolution    |       14.2   |        0.41  |    35x  |
-| Macenko normalise      |        8.6   |        0.27  |    32x  |
-| Tissue mask            |        6.9   |        0.18  |    38x  |
-| H2D / D2H              |        0.0   |        0.31  |     -   |
-| **Total**              |   **30.1**   |    **1.21**  |   **25x** |
+| Color deconvolution    |        3.5   |        0.34  |    10x  |
+| Macenko normalise      |        2.0   |        1.19  |     2x  |
+| Tissue mask            |        1.2   |        1.40  |     1x  |
+| H2D / D2H              |        0.0   |        2.30  |     —   |
+| **Total**              |    **6.05**  |    **5.22**  |   **1.16x** |
 
-See [`docs/benchmarks.md`](docs/benchmarks.md) for the methodology and
-the CSV used to produce these numbers.
+The GPU wins modestly on 256x256 patches because launch overhead and
+the H2D/D2H transfers dominate. The color-deconvolution kernel is the
+single biggest GPU win (10x), and on larger images the relative
+advantage grows further as the kernel work scales with `npix` while
+launch overhead stays constant.
 
 ---
 
