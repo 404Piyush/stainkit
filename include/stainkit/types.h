@@ -21,7 +21,7 @@ namespace stainkit {
 // ---------------------------------------------------------------------------
 // Basic numeric aliases
 // ---------------------------------------------------------------------------
-using byte   = std::uint8_t;
+using byte = std::uint8_t;
 using float2 = std::array<float, 2>;
 using float3 = std::array<float, 3>;
 
@@ -32,7 +32,7 @@ using float3 = std::array<float, 3>;
 // templated on the layout so the same kernel source can deal with RGB and
 // RGBA without a runtime branch.
 enum class PixelLayout : std::uint8_t {
-  kRgb  = 3,
+  kRgb = 3,
   kRgba = 4,
 };
 
@@ -48,10 +48,10 @@ enum class PixelLayout : std::uint8_t {
 //     between host and device.
 struct Image {
   std::vector<byte> pixels;
-  std::size_t       width      = 0;
-  std::size_t       height     = 0;
-  std::size_t       stride     = 0;
-  PixelLayout       layout     = PixelLayout::kRgb;
+  std::size_t width = 0;
+  std::size_t height = 0;
+  std::size_t stride = 0;
+  PixelLayout layout = PixelLayout::kRgb;
 
   std::size_t channels() const noexcept {
     return static_cast<std::size_t>(layout);
@@ -103,10 +103,10 @@ struct StainMatrix {
 // Target / reference staining — what the *output* image should look like.
 // ---------------------------------------------------------------------------
 struct StainTarget {
-  float3   target_he_concentrations{{0.65f, 0.70f, 0.29f}};
-  StainMatrix matrix       = StainMatrix::Identity();
-  float    background_lab  = 255.0f;
-  std::string name         = "default";
+  float3 target_he_concentrations{{0.65f, 0.70f, 0.29f}};
+  StainMatrix matrix = StainMatrix::Identity();
+  float background_lab = 255.0f;
+  std::string name = "default";
 };
 
 // ---------------------------------------------------------------------------
@@ -114,25 +114,25 @@ struct StainTarget {
 // ---------------------------------------------------------------------------
 struct PipelineParams {
   // Otsu tissue-mask controls.
-  bool   compute_tissue_mask       = true;
-  float  otsu_smoothing_radius     = 3.0f;
-  float  min_tissue_area_fraction  = 0.05f;
+  bool compute_tissue_mask = true;
+  float otsu_smoothing_radius = 3.0f;
+  float min_tissue_area_fraction = 0.05f;
 
   // Macenko controls.
-  float  stain_percentile_low      = 1.0f;
-  float  stain_percentile_high     = 99.0f;
-  bool   regularize_stain_matrix   = true;
+  float stain_percentile_low = 1.0f;
+  float stain_percentile_high = 99.0f;
+  bool regularize_stain_matrix = true;
 
   // Memory / stream configuration.
-  int    num_streams               = 4;
-  bool   use_pinned_memory         = true;
-  bool   overlap_io_with_compute   = true;
-  std::size_t max_inflight_tiles   = 8;
+  int num_streams = 4;
+  bool use_pinned_memory = true;
+  bool overlap_io_with_compute = true;
+  std::size_t max_inflight_tiles = 8;
 
   // Output.
-  bool   write_visualisation       = true;  // 3-panel before/after
-  bool   write_stain_od_image      = false; // the 2-channel OD map
-  bool   write_tissue_mask         = true;
+  bool write_visualisation = true;    // 3-panel before/after
+  bool write_stain_od_image = false;  // the 2-channel OD map
+  bool write_tissue_mask = true;
 };
 
 // ---------------------------------------------------------------------------
@@ -140,17 +140,17 @@ struct PipelineParams {
 // ---------------------------------------------------------------------------
 struct BenchmarkRecord {
   std::string image_id;
-  std::size_t width          = 0;
-  std::size_t height         = 0;
-  double      load_ms        = 0.0;
-  double      copy_h2d_ms    = 0.0;
-  double      deconvolve_ms  = 0.0;
-  double      normalise_ms   = 0.0;
-  double      mask_ms        = 0.0;
-  double      copy_d2h_ms    = 0.0;
-  double      write_ms       = 0.0;
-  double      total_ms       = 0.0;
-  double      cpu_baseline_ms = 0.0;
+  std::size_t width = 0;
+  std::size_t height = 0;
+  double load_ms = 0.0;
+  double copy_h2d_ms = 0.0;
+  double deconvolve_ms = 0.0;
+  double normalise_ms = 0.0;
+  double mask_ms = 0.0;
+  double copy_d2h_ms = 0.0;
+  double write_ms = 0.0;
+  double total_ms = 0.0;
+  double cpu_baseline_ms = 0.0;
 };
 
 }  // namespace stainkit

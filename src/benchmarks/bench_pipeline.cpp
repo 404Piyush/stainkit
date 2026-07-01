@@ -28,9 +28,9 @@ namespace fs = std::filesystem;
 namespace {
 
 struct Args {
-  fs::path    input_dir = "data/raw";
-  fs::path    csv;
-  int         num_images = -1;
+  fs::path input_dir = "data/raw";
+  fs::path csv;
+  int num_images = -1;
   std::string target = "default";
 };
 
@@ -44,10 +44,14 @@ bool Parse(int argc, char** argv, Args& a) {
       }
       return std::string{argv[++i]};
     };
-    if (s == "-i" || s == "--input") a.input_dir = next();
-    else if (s == "--csv") a.csv = next();
-    else if (s == "--num-images") a.num_images = std::stoi(next());
-    else if (s == "--target") a.target = next();
+    if (s == "-i" || s == "--input")
+      a.input_dir = next();
+    else if (s == "--csv")
+      a.csv = next();
+    else if (s == "--num-images")
+      a.num_images = std::stoi(next());
+    else if (s == "--target")
+      a.target = next();
     else if (s == "-h" || s == "--help") {
       std::cout << "stainkit-bench -i <dir> [--csv <path>] [--num-images N]\n";
       std::exit(0);
@@ -74,7 +78,8 @@ stainkit::StainTarget MakeTarget(const std::string& name) {
 
 int main(int argc, char** argv) {
   Args args;
-  if (!Parse(argc, argv, args)) return 2;
+  if (!Parse(argc, argv, args))
+    return 2;
 
   std::vector<fs::path> inputs = stainkit::ListImagesIn(args.input_dir);
   if (args.num_images >= 0 &&

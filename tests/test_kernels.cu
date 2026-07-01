@@ -37,11 +37,11 @@ T* Upload(const std::vector<T>& v) {
 
 }  // namespace
 
-#define SKIP_IF_NO_CUDA()                                                     \
-  do {                                                                        \
-    if (!CudaAvailable()) {                                                   \
-      GTEST_SKIP() << "No CUDA device available";                             \
-    }                                                                         \
+#define SKIP_IF_NO_CUDA()                         \
+  do {                                            \
+    if (!CudaAvailable()) {                       \
+      GTEST_SKIP() << "No CUDA device available"; \
+    }                                             \
   } while (0)
 
 TEST(Kernels, RgbToOdRoundTrip) {

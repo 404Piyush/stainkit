@@ -22,9 +22,9 @@ namespace {
 // prevents log(0) when the input is fully transparent.
 float3 ToOd(byte r, byte g, byte b) {
   const float inv = 1.0f / 255.0f;
-  const float fr  = std::max(1e-6f, r * inv);
-  const float fg  = std::max(1e-6f, g * inv);
-  const float fb  = std::max(1e-6f, b * inv);
+  const float fr = std::max(1e-6f, r * inv);
+  const float fg = std::max(1e-6f, g * inv);
+  const float fb = std::max(1e-6f, b * inv);
   return {-std::log(fr), -std::log(fg), -std::log(fb)};
 }
 
@@ -39,8 +39,8 @@ std::array<float, 9> Invert3x3(const std::array<float, 9>& m) {
   const float a = m[0], b = m[1], c = m[2];
   const float d = m[3], e = m[4], f = m[5];
   const float g = m[6], h = m[7], k = m[8];
-  const float det = a * (e * k - f * h) - b * (d * k - f * g) +
-                    c * (d * h - e * g);
+  const float det =
+      a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
   if (std::abs(det) < 1e-12f) {
     throw std::runtime_error(
         "Invert3x3: matrix is singular (cannot invert stain basis)");
@@ -92,25 +92,26 @@ Image CpuReferenceStainNormalise(const Image& input,
   std::vector<float> mags(w * h);
   for (std::size_t i = 0; i < w * h; ++i) {
     // Use Ruifrok-Johnston's 2D basis via luminance + a 2nd coordinate.
-    const float3 o    = od[i];
-    const float  lum  = Luma(o);
-    const float  comp = o[0] - o[2];  // crude second axis (R-B contrast)
-    angles[i]         = std::atan2(comp, lum);
-    mags[i]           = std::sqrt(lum * lum + comp * comp);
+    const float3 o = od[i];
+    const float lum = Luma(o);
+    const float comp = o[0] - o[2];  // crude second axis (R-B contrast)
+    angles[i] = std::atan2(comp, lum);
+    mags[i] = std::sqrt(lum * lum + comp * comp);
   }
 
   // ---- 3. Estimate H & E unit vectors via 1st/99th percentile angles ----
   std::vector<float> sorted_angles(w * h);
-  for (std::size_t i = 0; i < w * h; ++i) sorted_angles[i] = angles[i];
+  for (std::size_t i = 0; i < w * h; ++i)
+    sorted_angles[i] = angles[i];
   std::sort(sorted_angles.begin(), sorted_angles.end());
 
   auto pick_pct = [&](float pct) {
     const std::size_t idx = std::clamp<std::size_t>(
-        static_cast<std::size_t>(pct / 100.0f * (w * h - 1)),
-        std::size_t{0}, w * h - 1);
+        static_cast<std::size_t>(pct / 100.0f * (w * h - 1)), std::size_t{0},
+        w * h - 1);
     return sorted_angles[idx];
   };
-  const float a_low  = pick_pct(params.stain_percentile_low);
+  const float a_low = pick_pct(params.stain_percentile_low);
   const float a_high = pick_pct(params.stain_percentile_high);
 
   // Map the two angles back to 3D unit vectors. For a simple CPU reference
@@ -154,9 +155,9 @@ Image CpuReferenceStainNormalise(const Image& input,
     // Map to the target basis: replace concentrations with target values,
     // then re-encode.
     const float3 c_target = {th[0], th[1], c_src[2]};
-    const float3 od_recon  = MatVec(target_stain, c_target);
-    const float3 rgb      = {std::exp(-od_recon[0]), std::exp(-od_recon[1]),
-                             std::exp(-od_recon[2])};
+    const float3 od_recon = MatVec(target_stain, c_target);
+    const float3 rgb = {std::exp(-od_recon[0]), std::exp(-od_recon[1]),
+                        std::exp(-od_recon[2])};
     byte* row = out.pixels.data() + (i / w) * out.stride;
     row[(i % w) * 3 + 0] = ToByte(rgb[0]);
     row[(i % w) * 3 + 1] = ToByte(rgb[1]);
@@ -164,9 +165,8 @@ Image CpuReferenceStainNormalise(const Image& input,
   }
 
   if (elapsed_ms != nullptr) {
-    const auto t1     = std::chrono::steady_clock::now();
-    *elapsed_ms       = std::chrono::duration<double, std::milli>(t1 - t0)
-                          .count();
+    const auto t1 = std::chrono::steady_clock::now();
+    *elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
   }
   return out;
 }

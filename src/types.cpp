@@ -28,7 +28,7 @@ std::size_t ComputeStride(std::size_t width, std::size_t channels) {
   }
   // Round up to the nearest 4-byte boundary for vectorised loads/stores.
   constexpr std::size_t kAlignment = 4;
-  const std::size_t     raw        = width * channels;
+  const std::size_t raw = width * channels;
   return (raw + (kAlignment - 1)) & ~(kAlignment - 1);
 }
 
@@ -40,9 +40,9 @@ Image MakeImage(std::size_t width, std::size_t height, PixelLayout layout) {
     throw std::invalid_argument("MakeImage: dimension exceeds kMaxDimension");
   }
   const std::size_t channels = static_cast<std::size_t>(layout);
-  const std::size_t stride   = ComputeStride(width, channels);
+  const std::size_t stride = ComputeStride(width, channels);
   Image img;
-  img.width  = width;
+  img.width = width;
   img.height = height;
   img.stride = stride;
   img.layout = layout;
@@ -51,8 +51,7 @@ Image MakeImage(std::size_t width, std::size_t height, PixelLayout layout) {
 }
 
 float3 ClampUnit(const float3& v) noexcept {
-  return {std::clamp(v[0], 0.0f, 1.0f),
-          std::clamp(v[1], 0.0f, 1.0f),
+  return {std::clamp(v[0], 0.0f, 1.0f), std::clamp(v[1], 0.0f, 1.0f),
           std::clamp(v[2], 0.0f, 1.0f)};
 }
 

@@ -33,8 +33,7 @@ namespace kernels {
 // Output `d_magnitudes` is non-negative.
 void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
                              std::size_t height, float* d_out_angles,
-                             float* d_out_magnitudes,
-                             cudaStream_t stream = 0);
+                             float* d_out_magnitudes, cudaStream_t stream = 0);
 
 // ---------------------------------------------------------------------------
 // Stage 2: estimate the 3x2 stain matrix from the angle histogram.
@@ -44,9 +43,10 @@ void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
 // hematoxylin and eosin. The third column is taken as the orthogonal
 // complement (Ruifrok-Johnston residual) when `target_matrix` is
 // supplied; otherwise the user can leave it zeroed.
-StainMatrix EstimateStainMatrixFromAngles(
-    const std::vector<int>& histogram, std::size_t total_pixels,
-    float percentile_low, float percentile_high);
+StainMatrix EstimateStainMatrixFromAngles(const std::vector<int>& histogram,
+                                          std::size_t total_pixels,
+                                          float percentile_low,
+                                          float percentile_high);
 
 // Helper that builds the histogram on the host side (cheap, ~360 bins).
 std::vector<int> BuildAngleHistogram(const std::vector<float>& angles);
@@ -82,8 +82,7 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
 float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
                          const float* h_stain_matrix_inv,
-                         const float* h_target_conc,
-                         StainMatrix& estimated,
+                         const float* h_target_conc, StainMatrix& estimated,
                          float* d_out_rgb, cudaStream_t stream = 0);
 
 }  // namespace kernels

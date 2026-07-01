@@ -36,19 +36,19 @@ namespace {
 constexpr const char* kVersion = "0.1.0";
 
 struct CliArgs {
-  fs::path   input_dir;
-  fs::path   output_dir;
-  std::string filter         = "macenko";
-  std::string target         = "default";
-  int         num_images     = -1;     // -1 == all
-  int         num_streams    = 4;
-  bool        pinned_memory  = true;
-  bool        compute_mask   = true;
-  bool        benchmark      = false;
-  fs::path    csv_path;
-  bool        show_help      = false;
-  bool        show_version   = false;
-  bool        cpu_only       = false;  // fallback when CUDA is absent
+  fs::path input_dir;
+  fs::path output_dir;
+  std::string filter = "macenko";
+  std::string target = "default";
+  int num_images = -1;  // -1 == all
+  int num_streams = 4;
+  bool pinned_memory = true;
+  bool compute_mask = true;
+  bool benchmark = false;
+  fs::path csv_path;
+  bool show_help = false;
+  bool show_version = false;
+  bool cpu_only = false;  // fallback when CUDA is absent
 };
 
 void PrintHelp(std::ostream& os) {
@@ -152,7 +152,7 @@ stainkit::StainTarget MakeTarget(const std::string& name) {
     t.target_he_concentrations = {0.55f, 0.85f, 0.35f};
   } else {
     // "default" / unknown -> Macenko's reference basis.
-    t.matrix               = stainkit::StainMatrix::Identity();
+    t.matrix = stainkit::StainMatrix::Identity();
     t.target_he_concentrations = {0.65f, 0.70f, 0.29f};
   }
   return t;
@@ -169,10 +169,10 @@ void WriteCsv(const std::vector<stainkit::BenchmarkRecord>& rows,
          "normalise_ms,mask_ms,copy_d2h_ms,total_ms,cpu_baseline_ms,"
          "speedup\n";
   for (const auto& r : rows) {
-    const double speedup = (r.total_ms > 0.0) ? r.cpu_baseline_ms / r.total_ms
-                                             : 0.0;
-    ofs << r.image_id << ',' << r.width << ',' << r.height << ','
-        << r.load_ms << ',' << r.copy_h2d_ms << ',' << r.deconvolve_ms << ','
+    const double speedup =
+        (r.total_ms > 0.0) ? r.cpu_baseline_ms / r.total_ms : 0.0;
+    ofs << r.image_id << ',' << r.width << ',' << r.height << ',' << r.load_ms
+        << ',' << r.copy_h2d_ms << ',' << r.deconvolve_ms << ','
         << r.normalise_ms << ',' << r.mask_ms << ',' << r.copy_d2h_ms << ','
         << r.total_ms << ',' << r.cpu_baseline_ms << ',' << speedup << '\n';
   }
@@ -200,8 +200,8 @@ int main(int argc, char** argv) {
     return 2;
   }
   if (!fs::exists(args.input_dir) || !fs::is_directory(args.input_dir)) {
-    std::cerr << "stainkit: input directory does not exist: "
-              << args.input_dir << "\n";
+    std::cerr << "stainkit: input directory does not exist: " << args.input_dir
+              << "\n";
     return 2;
   }
   std::error_code ec;
@@ -212,9 +212,9 @@ int main(int argc, char** argv) {
 
   // -- Resolve pipeline parameters --
   stainkit::PipelineParams params;
-  params.num_streams             = args.num_streams;
-  params.use_pinned_memory       = args.pinned_memory;
-  params.compute_tissue_mask     = args.compute_mask;
+  params.num_streams = args.num_streams;
+  params.use_pinned_memory = args.pinned_memory;
+  params.compute_tissue_mask = args.compute_mask;
   params.overlap_io_with_compute = (args.num_streams > 1);
 
   // -- Discover input images --
@@ -263,10 +263,10 @@ int main(int argc, char** argv) {
       continue;
     }
 
-    const std::string stem    = path.stem().string();
-    const fs::path    out_png = args.output_dir / (stem + "_normalised.png");
-    const fs::path    out_msk = args.output_dir / (stem + "_mask.png");
-    const fs::path    out_viz = args.output_dir / (stem + "_panel.png");
+    const std::string stem = path.stem().string();
+    const fs::path out_png = args.output_dir / (stem + "_normalised.png");
+    const fs::path out_msk = args.output_dir / (stem + "_mask.png");
+    const fs::path out_viz = args.output_dir / (stem + "_panel.png");
 
     if (pipeline) {
       const auto rr = pipeline->RunWithCpuBaseline(img, params, target);
@@ -296,11 +296,10 @@ int main(int argc, char** argv) {
       stainkit::WriteImage(normalised, out_png);
       // No tissue mask in CPU path to keep the reference simple.
       stainkit::BenchmarkRecord r;
-      r.image_id        = stem;
-      r.width           = img.width;
-      r.height          = img.height;
-      r.total_ms        = std::chrono::duration<double, std::milli>(t2 - t1)
-                              .count();
+      r.image_id = stem;
+      r.width = img.width;
+      r.height = img.height;
+      r.total_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
       r.cpu_baseline_ms = cpu_ms;
       bench.push_back(r);
     }
@@ -310,11 +309,10 @@ int main(int argc, char** argv) {
       const double ms =
           std::chrono::duration<double, std::milli>(t1 - t0).count();
       const auto& last = bench.back();
-      std::cout << std::fixed << std::setprecision(2)
-                << "  [" << (++idx) << "/" << inputs.size() << "] " << stem
-                << "  GPU=" << last.total_ms
-                << "ms  CPU=" << last.cpu_baseline_ms
-                << "ms  wall=" << ms << "ms\n";
+      std::cout << std::fixed << std::setprecision(2) << "  [" << (++idx) << "/"
+                << inputs.size() << "] " << stem << "  GPU=" << last.total_ms
+                << "ms  CPU=" << last.cpu_baseline_ms << "ms  wall=" << ms
+                << "ms\n";
     } else {
       std::cout << "  [" << (++idx) << "/" << inputs.size() << "] " << stem
                 << "\n";

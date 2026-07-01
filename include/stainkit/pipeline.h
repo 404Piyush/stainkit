@@ -23,10 +23,10 @@ class CudaContext;  // forward decl — defined in src/pipeline.cpp
 // Output bundle — every call to `Pipeline::Run` returns one of these.
 // ---------------------------------------------------------------------------
 struct PipelineResult {
-  Image     normalised;       // stain-normalised RGB
-  Image     tissue_mask;      // 1-channel uint8 (0..255) where 255 = tissue
-  Image     stain_od;         // 2-channel float, packed as half-precision
-                              // (only populated if requested)
+  Image normalised;   // stain-normalised RGB
+  Image tissue_mask;  // 1-channel uint8 (0..255) where 255 = tissue
+  Image stain_od;     // 2-channel float, packed as half-precision
+                      // (only populated if requested)
   StainMatrix estimated_matrix;
   BenchmarkRecord timing;
 };
@@ -43,7 +43,7 @@ class Pipeline {
   Pipeline();
   ~Pipeline();
 
-  Pipeline(const Pipeline&)            = delete;
+  Pipeline(const Pipeline&) = delete;
   Pipeline& operator=(const Pipeline&) = delete;
 
   static std::unique_ptr<Pipeline> Make();
@@ -68,9 +68,9 @@ class Pipeline {
   // Batch helper: iterates over `inputs`, optionally reusing pinned
   // memory, and returns the per-image results. If `params.num_streams > 1`
   // the work is overlapped across streams.
-  std::vector<PipelineResult> RunBatch(
-      const std::vector<Image>& inputs, const PipelineParams& params,
-      const StainTarget& target);
+  std::vector<PipelineResult> RunBatch(const std::vector<Image>& inputs,
+                                       const PipelineParams& params,
+                                       const StainTarget& target);
 
   // Human-readable device name (for logging).
   std::string DeviceName() const;

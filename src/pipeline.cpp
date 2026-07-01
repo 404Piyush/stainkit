@@ -33,10 +33,9 @@ class CudaContext {
  public:
   CudaContext() {
     int device_count = 0;
-    cudaError_t err  = cudaGetDeviceCount(&device_count);
+    cudaError_t err = cudaGetDeviceCount(&device_count);
     if (err != cudaSuccess || device_count == 0) {
-      throw std::runtime_error(
-          "CudaContext: no CUDA devices available");
+      throw std::runtime_error("CudaContext: no CUDA devices available");
     }
     cudaError_t set_err = cudaSetDevice(0);
     if (set_err != cudaSuccess) {
@@ -77,7 +76,7 @@ class CudaContext {
     }
   }
 
-  CudaContext(const CudaContext&)            = delete;
+  CudaContext(const CudaContext&) = delete;
   CudaContext& operator=(const CudaContext&) = delete;
 
   const std::string& DeviceName() const noexcept { return device_name_; }
@@ -92,7 +91,7 @@ class CudaContext {
   static constexpr int kMaxStreams = 8;
 
  private:
-  std::string  device_name_;
+  std::string device_name_;
   cudaStream_t streams_[kMaxStreams]{};
 };
 
@@ -103,11 +102,12 @@ namespace {
 
 // RAII wrapper for device memory.
 struct DeviceBuffer {
-  void*  ptr  = nullptr;
+  void* ptr = nullptr;
   size_t size = 0;
 
   explicit DeviceBuffer(size_t bytes) : size(bytes) {
-    if (bytes == 0) return;
+    if (bytes == 0)
+      return;
     cudaError_t e = cudaMalloc(&ptr, bytes);
     if (e != cudaSuccess) {
       throw std::runtime_error(
@@ -116,9 +116,10 @@ struct DeviceBuffer {
     }
   }
   ~DeviceBuffer() {
-    if (ptr != nullptr) cudaFree(ptr);
+    if (ptr != nullptr)
+      cudaFree(ptr);
   }
-  DeviceBuffer(const DeviceBuffer&)            = delete;
+  DeviceBuffer(const DeviceBuffer&) = delete;
   DeviceBuffer& operator=(const DeviceBuffer&) = delete;
 };
 
@@ -129,8 +130,8 @@ struct ScopedEvent {
   cudaEvent_t start{};
   cudaEvent_t stop{};
   cudaStream_t stream{};
-  float       elapsed_ms = 0.0f;
-  bool        stopped    = false;
+  float elapsed_ms = 0.0f;
+  bool stopped = false;
 
   explicit ScopedEvent(cudaStream_t s) : stream(s) {
     cudaEventCreate(&start);
@@ -138,14 +139,15 @@ struct ScopedEvent {
     cudaEventRecord(start, stream);
   }
   void MarkStop() {
-    if (stopped) return;
+    if (stopped)
+      return;
     stopped = true;
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed_ms, start, stop);
   }
   ~ScopedEvent() { MarkStop(); }
-  ScopedEvent(const ScopedEvent&)            = delete;
+  ScopedEvent(const ScopedEvent&) = delete;
   ScopedEvent& operator=(const ScopedEvent&) = delete;
 };
 
@@ -188,13 +190,13 @@ struct SegvRecovery {
   void Arm() {
     armed = 1;
     std::signal(SIGSEGV, &SegvRecovery::Handler);
-    std::signal(SIGBUS,  &SegvRecovery::Handler);
+    std::signal(SIGBUS, &SegvRecovery::Handler);
   }
 
   void Disarm() {
     armed = 0;
     std::signal(SIGSEGV, SIG_DFL);
-    std::signal(SIGBUS,  SIG_DFL);
+    std::signal(SIGBUS, SIG_DFL);
   }
 
   static void Handler(int sig) {
@@ -250,18 +252,18 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   if (input.layout != PixelLayout::kRgb) {
     throw std::invalid_argument("Pipeline::Run: only 3-channel RGB supported");
   }
-  const std::size_t w       = input.width;
-  const std::size_t h       = input.height;
-  const std::size_t npix    = w * h;
-  const std::size_t rgb_sz  = npix * 3 * sizeof(float);
-  const std::size_t od_sz   = npix * 2 * sizeof(float);
-  const std::size_t lum_sz  = npix * sizeof(float);
+  const std::size_t w = input.width;
+  const std::size_t h = input.height;
+  const std::size_t npix = w * h;
+  const std::size_t rgb_sz = npix * 3 * sizeof(float);
+  const std::size_t od_sz = npix * 2 * sizeof(float);
+  const std::size_t lum_sz = npix * sizeof(float);
   const std::size_t mask_sz = npix * sizeof(std::uint8_t);
 
   PipelineResult result;
   result.timing.image_id = "<gpu-run>";
-  result.timing.width    = w;
-  result.timing.height   = h;
+  result.timing.width = w;
+  result.timing.height = h;
 
   // CPU baseline (always measured so the benchmark CSV has a column
   // for it). Even when the user does not request --benchmark, the
@@ -277,8 +279,8 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   // switching to pinned is a single-line change.
   std::vector<float> host_rgb(npix * 3);
   for (std::size_t y = 0; y < h; ++y) {
-    const byte* row_in  = input.pixels.data() + y * input.stride;
-    float*      row_out = host_rgb.data() + y * w * 3;
+    const byte* row_in = input.pixels.data() + y * input.stride;
+    float* row_out = host_rgb.data() + y * w * 3;
     for (std::size_t x = 0; x < w; ++x) {
       row_out[3 * x + 0] = row_in[3 * x + 0] * (1.0f / 255.0f);
       row_out[3 * x + 1] = row_in[3 * x + 1] * (1.0f / 255.0f);
@@ -305,33 +307,31 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   ScopedEvent copy_d2h_ev(stream);
 
   // -- H2D --
-  cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz,
-                  cudaMemcpyHostToDevice, stream);
+  cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz, cudaMemcpyHostToDevice,
+                  stream);
   copy_h2d_ev.MarkStop();
   result.timing.copy_h2d_ms = copy_h2d_ev.elapsed_ms;
 
   // -- Deconvolve (RGB -> OD) --
-  kernels::ColorDeconvolveRgb(
-      static_cast<const float*>(d_rgb_in.ptr), w, h,
-      target.matrix.values.data(),
-      static_cast<float*>(d_stain_od.ptr), 2, 1, stream);
+  kernels::ColorDeconvolveRgb(static_cast<const float*>(d_rgb_in.ptr), w, h,
+                              target.matrix.values.data(),
+                              static_cast<float*>(d_stain_od.ptr), 2, 1,
+                              stream);
   deconvolve_ev.MarkStop();
   result.timing.deconvolve_ms = deconvolve_ev.elapsed_ms;
 
   // -- Macenko normalise (estimated basis + target reconstruction) --
   StainMatrix est = target.matrix;
   std::array<float, 6> h_matrix_inv{};
-  for (int i = 0; i < 6; ++i) h_matrix_inv[i] = target.matrix.values[i];
+  for (int i = 0; i < 6; ++i)
+    h_matrix_inv[i] = target.matrix.values[i];
   std::array<float, 3> h_conc = {
       target.target_he_concentrations[0],
       target.target_he_concentrations[1],
       target.target_he_concentrations[2],
   };
-  kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w,
-                              h, params,
-                              h_matrix_inv.data(),
-                              h_conc.data(),
-                              est,
+  kernels::NormaliseStainFull(static_cast<const float*>(d_rgb_in.ptr), w, h,
+                              params, h_matrix_inv.data(), h_conc.data(), est,
                               static_cast<float*>(d_rgb_out.ptr), stream);
   normalise_ev.MarkStop();
   result.estimated_matrix = est;
@@ -343,16 +343,16 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                             static_cast<float*>(d_lum.ptr), stream);
     const float threshold = kernels::OtsuThresholdDevice(
         static_cast<const float*>(d_lum.ptr), w, h, stream);
-    kernels::ThresholdToMask(static_cast<const float*>(d_lum.ptr), w, h,
-                             threshold,
-                             static_cast<std::size_t>(params.otsu_smoothing_radius),
-                             static_cast<std::uint8_t*>(d_mask.ptr), stream);
+    kernels::ThresholdToMask(
+        static_cast<const float*>(d_lum.ptr), w, h, threshold,
+        static_cast<std::size_t>(params.otsu_smoothing_radius),
+        static_cast<std::uint8_t*>(d_mask.ptr), stream);
     mask_ev.MarkStop();
     result.timing.mask_ms = mask_ev.elapsed_ms;
   }
 
   // -- Copy back --
-  result.normalised  = MakeImage(w, h, PixelLayout::kRgb);
+  result.normalised = MakeImage(w, h, PixelLayout::kRgb);
   result.tissue_mask = MakeImage(w, h, PixelLayout::kRgb);
   {
     std::vector<float> back_rgb(npix * 3);
@@ -360,7 +360,8 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                     cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
     for (std::size_t y = 0; y < h; ++y) {
-      byte* row = result.normalised.pixels.data() + y * result.normalised.stride;
+      byte* row =
+          result.normalised.pixels.data() + y * result.normalised.stride;
       for (std::size_t x = 0; x < w; ++x) {
         const float r = std::clamp(back_rgb[3 * (y * w + x) + 0], 0.0f, 1.0f);
         const float g = std::clamp(back_rgb[3 * (y * w + x) + 1], 0.0f, 1.0f);
@@ -379,9 +380,10 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
                     cudaMemcpyDeviceToHost, stream);
     cudaStreamSynchronize(stream);
     for (std::size_t y = 0; y < h; ++y) {
-      byte* row = result.tissue_mask.pixels.data() + y * result.tissue_mask.stride;
+      byte* row =
+          result.tissue_mask.pixels.data() + y * result.tissue_mask.stride;
       for (std::size_t x = 0; x < w; ++x) {
-        const byte v  = back_mask[y * w + x];
+        const byte v = back_mask[y * w + x];
         row[3 * x + 0] = v;
         row[3 * x + 1] = v;
         row[3 * x + 2] = v;
@@ -392,15 +394,14 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   // Totals
   result.timing.total_ms = result.timing.copy_h2d_ms +
                            result.timing.deconvolve_ms +
-                           result.timing.normalise_ms +
-                           result.timing.mask_ms +
+                           result.timing.normalise_ms + result.timing.mask_ms +
                            result.timing.copy_d2h_ms;
   return result;
 }
 
-std::vector<PipelineResult> Pipeline::RunBatch(
-    const std::vector<Image>& inputs, const PipelineParams& params,
-    const StainTarget& target) {
+std::vector<PipelineResult> Pipeline::RunBatch(const std::vector<Image>& inputs,
+                                               const PipelineParams& params,
+                                               const StainTarget& target) {
   std::vector<PipelineResult> out;
   out.reserve(inputs.size());
   // For now we run sequentially. A multi-stream implementation is a

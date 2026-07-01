@@ -34,14 +34,15 @@ __global__ void AngleKernel(const float* __restrict__ d_in_stain_od,
                             float* __restrict__ d_out_angles,
                             float* __restrict__ d_out_magnitudes,
                             std::size_t npix) {
-  const std::size_t idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x +
-                          threadIdx.x;
-  if (idx >= npix) return;
+  const std::size_t idx =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= npix)
+    return;
   const float h = d_in_stain_od[2 * idx + 0];
   const float e = d_in_stain_od[2 * idx + 1];
   // The Macenko basis: hematoxylin on the x axis, eosin on the y axis.
   // We treat the OD pair as 2D coordinates and use atan2 for the angle.
-  d_out_angles[idx]     = atan2f(e, h);
+  d_out_angles[idx] = atan2f(e, h);
   d_out_magnitudes[idx] = sqrtf(h * h + e * e);
 }
 
@@ -50,9 +51,10 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
                                   const float* __restrict__ d_target_conc,
                                   float* __restrict__ d_out_rgb,
                                   std::size_t npix) {
-  const std::size_t idx = static_cast<std::size_t>(blockIdx.x) * blockDim.x +
-                          threadIdx.x;
-  if (idx >= npix) return;
+  const std::size_t idx =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= npix)
+    return;
   const std::size_t base = 3 * idx;
   const float h = d_in_stain_od[2 * idx + 0];
   const float e = d_in_stain_od[2 * idx + 1];
@@ -79,9 +81,9 @@ void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
     throw std::invalid_argument(
         "ComputeStainPlaneAngles: null device pointer(s)");
   }
-  const std::size_t npix  = width * height;
-  const int         block = 256;
-  const int         grid  = static_cast<int>((npix + block - 1) / block);
+  const std::size_t npix = width * height;
+  const int block = 256;
+  const int grid = static_cast<int>((npix + block - 1) / block);
   AngleKernel<<<grid, block, 0, stream>>>(d_in_stain_od, d_out_angles,
                                           d_out_magnitudes, npix);
 }
@@ -89,24 +91,27 @@ void ComputeStainPlaneAngles(const float* d_in_stain_od, std::size_t width,
 std::vector<int> BuildAngleHistogram(const std::vector<float>& angles) {
   std::vector<int> hist(kAngleBins, 0);
   for (float a : angles) {
-    int bin = static_cast<int>(std::round((a + M_PI) /
-                                          (2.0 * M_PI) * (kAngleBins - 1)));
-    if (bin < 0) bin = 0;
-    if (bin >= kAngleBins) bin = kAngleBins - 1;
+    int bin = static_cast<int>(
+        std::round((a + M_PI) / (2.0 * M_PI) * (kAngleBins - 1)));
+    if (bin < 0)
+      bin = 0;
+    if (bin >= kAngleBins)
+      bin = kAngleBins - 1;
     hist[bin]++;
   }
   return hist;
 }
 
-StainMatrix EstimateStainMatrixFromAngles(
-    const std::vector<int>& histogram, std::size_t total_pixels,
-    float percentile_low, float percentile_high) {
+StainMatrix EstimateStainMatrixFromAngles(const std::vector<int>& histogram,
+                                          std::size_t total_pixels,
+                                          float percentile_low,
+                                          float percentile_high) {
   if (histogram.empty() || total_pixels == 0) {
     return StainMatrix::Identity();
   }
   // Cumulative sum + percentile picking.
   std::vector<std::size_t> cdf(histogram.size(), 0);
-  std::size_t              acc = 0;
+  std::size_t acc = 0;
   for (std::size_t i = 0; i < histogram.size(); ++i) {
     acc += static_cast<std::size_t>(histogram[i]);
     cdf[i] = acc;
@@ -115,20 +120,21 @@ StainMatrix EstimateStainMatrixFromAngles(
     const std::size_t threshold =
         static_cast<std::size_t>(pct / 100.0f * total_pixels);
     for (std::size_t i = 0; i < cdf.size(); ++i) {
-      if (cdf[i] >= threshold) return i;
+      if (cdf[i] >= threshold)
+        return i;
     }
     return cdf.size() - 1;
   };
-  const int bin_low  = static_cast<int>(find_bin(percentile_low));
+  const int bin_low = static_cast<int>(find_bin(percentile_low));
   const int bin_high = static_cast<int>(find_bin(percentile_high));
-  const float a_low  = -static_cast<float>(M_PI) +
-                      (2.0f * static_cast<float>(M_PI)) *
-                          (static_cast<float>(bin_low) /
-                           static_cast<float>(kAngleBins));
-  const float a_high = -static_cast<float>(M_PI) +
-                       (2.0f * static_cast<float>(M_PI)) *
-                           (static_cast<float>(bin_high) /
-                            static_cast<float>(kAngleBins));
+  const float a_low =
+      -static_cast<float>(M_PI) +
+      (2.0f * static_cast<float>(M_PI)) *
+          (static_cast<float>(bin_low) / static_cast<float>(kAngleBins));
+  const float a_high =
+      -static_cast<float>(M_PI) +
+      (2.0f * static_cast<float>(M_PI)) *
+          (static_cast<float>(bin_high) / static_cast<float>(kAngleBins));
 
   // Lift the two angles into 3D. We use the same simple "2D unit vector
   // lifted to 3D" trick as the CPU reference.
@@ -153,17 +159,25 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
   }
   // Build a host-side copy of the target matrix in column-major form.
   const std::array<float, 9> target_matrix = {
-      h_target_matrix_6[0], h_target_matrix_6[1], h_target_matrix_6[2],
-      h_target_matrix_6[3], h_target_matrix_6[4], h_target_matrix_6[5],
-      0.0f, 0.0f, 1.0f,  // residual: identity, but unused in 2-channel mode
+      h_target_matrix_6[0],
+      h_target_matrix_6[1],
+      h_target_matrix_6[2],
+      h_target_matrix_6[3],
+      h_target_matrix_6[4],
+      h_target_matrix_6[5],
+      0.0f,
+      0.0f,
+      1.0f,  // residual: identity, but unused in 2-channel mode
   };
   const std::array<float, 3> target_conc = {
-      h_target_conc_3[0], h_target_conc_3[1], h_target_conc_3[2],
+      h_target_conc_3[0],
+      h_target_conc_3[1],
+      h_target_conc_3[2],
   };
 
   // Copy small inputs to device.
-  float*       d_target_matrix = nullptr;
-  float*       d_target_conc   = nullptr;
+  float* d_target_matrix = nullptr;
+  float* d_target_conc = nullptr;
   cudaMalloc(&d_target_matrix, sizeof(float) * 9);
   cudaMalloc(&d_target_conc, sizeof(float) * 3);
   cudaMemcpyAsync(d_target_matrix, target_matrix.data(), sizeof(float) * 9,
@@ -171,9 +185,9 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
   cudaMemcpyAsync(d_target_conc, target_conc.data(), sizeof(float) * 3,
                   cudaMemcpyHostToDevice, stream);
 
-  const std::size_t npix  = width * height;
-  const int         block = 256;
-  const int         grid  = static_cast<int>((npix + block - 1) / block);
+  const std::size_t npix = width * height;
+  const int block = 256;
+  const int grid = static_cast<int>((npix + block - 1) / block);
   ReconstructKernel<<<grid, block, 0, stream>>>(d_in_stain_od, d_target_matrix,
                                                 d_target_conc, d_out_rgb, npix);
   cudaStreamSynchronize(stream);
@@ -184,19 +198,19 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
 float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                          std::size_t height, const PipelineParams& params,
                          const float* h_stain_matrix_inv,
-                         const float* h_target_conc,
-                         StainMatrix& estimated,
+                         const float* h_target_conc, StainMatrix& estimated,
                          float* d_out_rgb, cudaStream_t stream) {
   if (d_in_rgb == nullptr || d_out_rgb == nullptr ||
       h_stain_matrix_inv == nullptr || h_target_conc == nullptr) {
-    throw std::invalid_argument("NormaliseStainFull: null host/device pointer(s)");
+    throw std::invalid_argument(
+        "NormaliseStainFull: null host/device pointer(s)");
   }
   cudaStream_t s = stream;
 
   // 1. Allocate the OD scratch buffer on the device.
-  const std::size_t npix    = width * height;
+  const std::size_t npix = width * height;
   const std::size_t od_size = npix * 2 * sizeof(float);
-  float*            d_od    = nullptr;
+  float* d_od = nullptr;
   cudaError_t e_alloc = cudaMalloc(&d_od, od_size);
   if (e_alloc != cudaSuccess) {
     throw std::runtime_error(
@@ -207,13 +221,14 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   // 2. Deconvolve the input into the (H, E) OD channels. We pass the
   //    raw host float pointer to ColorDeconvolveRgb so the cross-.cu
   //    boundary carries only a trivially-copyable pointer type.
-  ColorDeconvolveRgb(d_in_rgb, width, height, h_stain_matrix_inv, d_od, 2, 1, s);
+  ColorDeconvolveRgb(d_in_rgb, width, height, h_stain_matrix_inv, d_od, 2, 1,
+                     s);
 
   // 3. Project OD onto the stain plane.
   float* d_angles = nullptr;
-  float* d_mags   = nullptr;
+  float* d_mags = nullptr;
   cudaMalloc(&d_angles, npix * sizeof(float));
-  cudaMalloc(&d_mags,   npix * sizeof(float));
+  cudaMalloc(&d_mags, npix * sizeof(float));
   ComputeStainPlaneAngles(d_od, width, height, d_angles, d_mags, s);
 
   // 4. Bring angles back to the host and estimate the stain basis.
@@ -222,7 +237,7 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
                   cudaMemcpyDeviceToHost, s);
   cudaStreamSynchronize(s);
   const auto hist = BuildAngleHistogram(h_angles);
-  estimated       = EstimateStainMatrixFromAngles(
+  estimated = EstimateStainMatrixFromAngles(
       hist, npix, params.stain_percentile_low, params.stain_percentile_high);
 
   // 5. Reconstruct with the *target* matrix and concentrations. The
@@ -237,18 +252,24 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
 
   // Build the full 9-float matrix on the HOST, then upload.
   const std::array<float, 9> h_target_matrix_full = {
-      h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
-      h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
-      0.0f, 0.0f, 1.0f,  // residual: identity (kernel only reads cols 0,1)
+      h_stain_matrix_inv[0],
+      h_stain_matrix_inv[1],
+      h_stain_matrix_inv[2],
+      h_stain_matrix_inv[3],
+      h_stain_matrix_inv[4],
+      h_stain_matrix_inv[5],
+      0.0f,
+      0.0f,
+      1.0f,  // residual: identity (kernel only reads cols 0,1)
   };
   float* d_target_matrix_full = nullptr;
-  float* d_target_conc        = nullptr;
+  float* d_target_conc = nullptr;
   cudaMalloc(&d_target_matrix_full, sizeof(float) * 9);
-  cudaMalloc(&d_target_conc,        sizeof(float) * 3);
+  cudaMalloc(&d_target_conc, sizeof(float) * 3);
   cudaMemcpyAsync(d_target_matrix_full, h_target_matrix_full.data(),
                   sizeof(float) * 9, cudaMemcpyHostToDevice, s);
-  cudaMemcpyAsync(d_target_conc, h_target_conc,
-                  sizeof(float) * 3, cudaMemcpyHostToDevice, s);
+  cudaMemcpyAsync(d_target_conc, h_target_conc, sizeof(float) * 3,
+                  cudaMemcpyHostToDevice, s);
   cudaStreamSynchronize(s);
   ReconstructKernel<<<static_cast<int>((npix + 255) / 256), 256, 0, s>>>(
       d_od, d_target_matrix_full, d_target_conc, d_out_rgb, npix);

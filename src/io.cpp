@@ -27,7 +27,7 @@ namespace {
 // host side; TIFF and whole-slide formats go through openslide at the
 // pipeline level (see include/stainkit/pipeline.h).
 constexpr const char* kInputExtensions[] = {
-    ".png",  ".jpg",  ".jpeg", ".bmp", ".tga", ".hdr",
+    ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr",
 };
 
 constexpr const char* kOutputExtensions[] = {
@@ -45,7 +45,8 @@ std::string ToLower(std::string s) {
 bool IsSupportedImage(const std::filesystem::path& path) {
   const std::string ext = ToLower(path.extension().string());
   for (const auto* candidate : kInputExtensions) {
-    if (ext == candidate) return true;
+    if (ext == candidate)
+      return true;
   }
   return false;
 }
@@ -53,7 +54,8 @@ bool IsSupportedImage(const std::filesystem::path& path) {
 bool IsSupportedOutputImage(const std::filesystem::path& path) {
   const std::string ext = ToLower(path.extension().string());
   for (const auto* candidate : kOutputExtensions) {
-    if (ext == candidate) return true;
+    if (ext == candidate)
+      return true;
   }
   return false;
 }
@@ -65,11 +67,11 @@ Image ReadImage(const std::filesystem::path& path, int force_channels) {
     throw std::runtime_error(oss.str());
   }
 
-  int            width = 0;
-  int            height = 0;
-  int            channels_in_file = 0;
-  stbi_uc*       raw = stbi_load(path.string().c_str(), &width, &height,
-                                 &channels_in_file, force_channels);
+  int width = 0;
+  int height = 0;
+  int channels_in_file = 0;
+  stbi_uc* raw = stbi_load(path.string().c_str(), &width, &height,
+                           &channels_in_file, force_channels);
   if (raw == nullptr) {
     std::ostringstream oss;
     oss << "ReadImage: stbi_load failed for " << path << " : "
@@ -77,18 +79,18 @@ Image ReadImage(const std::filesystem::path& path, int force_channels) {
     throw std::runtime_error(oss.str());
   }
 
-  const int channels = (force_channels == 0) ? channels_in_file
-                                              : force_channels;
+  const int channels =
+      (force_channels == 0) ? channels_in_file : force_channels;
   if (channels != 3 && channels != 4) {
     stbi_image_free(raw);
     std::ostringstream oss;
-    oss << "ReadImage: unsupported channel count " << channels
-        << " for " << path;
+    oss << "ReadImage: unsupported channel count " << channels << " for "
+        << path;
     throw std::runtime_error(oss.str());
   }
 
   Image img;
-  img.width  = static_cast<std::size_t>(width);
+  img.width = static_cast<std::size_t>(width);
   img.height = static_cast<std::size_t>(height);
   img.layout = (channels == 4) ? PixelLayout::kRgba : PixelLayout::kRgb;
   img.stride = ComputeStride(img.width, channels);
@@ -98,7 +100,7 @@ Image ReadImage(const std::filesystem::path& path, int force_channels) {
   img.pixels.assign(img.stride * img.height, 0);
   for (std::size_t y = 0; y < img.height; ++y) {
     const auto* src = raw + y * tight_row;
-    auto*       dst = img.pixels.data() + y * img.stride;
+    auto* dst = img.pixels.data() + y * img.stride;
     std::memcpy(dst, src, tight_row);
   }
 
@@ -110,11 +112,10 @@ namespace {
 
 void WritePng(const Image& image, const std::filesystem::path& path) {
   const int stride_in_bytes = static_cast<int>(image.stride);
-  const int ok = stbi_write_png(path.string().c_str(),
-                                static_cast<int>(image.width),
-                                static_cast<int>(image.height),
-                                static_cast<int>(image.channels()),
-                                image.pixels.data(), stride_in_bytes);
+  const int ok = stbi_write_png(
+      path.string().c_str(), static_cast<int>(image.width),
+      static_cast<int>(image.height), static_cast<int>(image.channels()),
+      image.pixels.data(), stride_in_bytes);
   if (ok == 0) {
     throw std::runtime_error("WriteImage: stbi_write_png failed for " +
                              path.string());
@@ -123,13 +124,14 @@ void WritePng(const Image& image, const std::filesystem::path& path) {
 
 void WriteJpg(const Image& image, const std::filesystem::path& path,
               int quality) {
-  if (quality < 1) quality = 1;
-  if (quality > 100) quality = 100;
-  const int ok = stbi_write_jpg(path.string().c_str(),
-                                static_cast<int>(image.width),
-                                static_cast<int>(image.height),
-                                static_cast<int>(image.channels()),
-                                image.pixels.data(), quality);
+  if (quality < 1)
+    quality = 1;
+  if (quality > 100)
+    quality = 100;
+  const int ok = stbi_write_jpg(
+      path.string().c_str(), static_cast<int>(image.width),
+      static_cast<int>(image.height), static_cast<int>(image.channels()),
+      image.pixels.data(), quality);
   if (ok == 0) {
     throw std::runtime_error("WriteImage: stbi_write_jpg failed for " +
                              path.string());
@@ -137,11 +139,10 @@ void WriteJpg(const Image& image, const std::filesystem::path& path,
 }
 
 void WriteBmp(const Image& image, const std::filesystem::path& path) {
-  const int ok = stbi_write_bmp(path.string().c_str(),
-                                static_cast<int>(image.width),
-                                static_cast<int>(image.height),
-                                static_cast<int>(image.channels()),
-                                image.pixels.data());
+  const int ok =
+      stbi_write_bmp(path.string().c_str(), static_cast<int>(image.width),
+                     static_cast<int>(image.height),
+                     static_cast<int>(image.channels()), image.pixels.data());
   if (ok == 0) {
     throw std::runtime_error("WriteImage: stbi_write_bmp failed for " +
                              path.string());
@@ -149,11 +150,10 @@ void WriteBmp(const Image& image, const std::filesystem::path& path) {
 }
 
 void WriteTga(const Image& image, const std::filesystem::path& path) {
-  const int ok = stbi_write_tga(path.string().c_str(),
-                                static_cast<int>(image.width),
-                                static_cast<int>(image.height),
-                                static_cast<int>(image.channels()),
-                                image.pixels.data());
+  const int ok =
+      stbi_write_tga(path.string().c_str(), static_cast<int>(image.width),
+                     static_cast<int>(image.height),
+                     static_cast<int>(image.channels()), image.pixels.data());
   if (ok == 0) {
     throw std::runtime_error("WriteImage: stbi_write_tga failed for " +
                              path.string());
@@ -192,7 +192,8 @@ std::vector<std::filesystem::path> ListImagesIn(
     return out;
   }
   for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-    if (!entry.is_regular_file()) continue;
+    if (!entry.is_regular_file())
+      continue;
     if (IsSupportedImage(entry.path())) {
       out.push_back(entry.path());
     }
@@ -224,7 +225,7 @@ void WriteVisualisationPanel(const Image& input, const Image& normalised,
   auto blit = [&](const Image& src, std::size_t dx) {
     for (std::size_t y = 0; y < h; ++y) {
       const auto* src_row = src.pixels.data() + y * src.stride;
-      auto*       dst_row = panel.pixels.data() + y * panel.stride + dx * 3;
+      auto* dst_row = panel.pixels.data() + y * panel.stride + dx * 3;
       std::memcpy(dst_row, src_row, w * 3);
     }
   };

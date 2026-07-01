@@ -25,13 +25,15 @@ __device__ inline bool InsideDisc(int dx, int dy, int radius) {
 
 // Separable 1D pass along the row axis.
 __global__ void MorphRowKernel(const std::uint8_t* __restrict__ d_in,
-                               std::uint8_t* __restrict__ d_out, std::size_t width,
-                               std::size_t height, int radius, bool is_max) {
+                               std::uint8_t* __restrict__ d_out,
+                               std::size_t width, std::size_t height,
+                               int radius, bool is_max) {
   extern __shared__ std::uint8_t s_tile[];
   const int tile_w = blockDim.x + 2 * 64;  // assume radius <= 64
   const int x_block_start = blockIdx.x * blockDim.x;
-  const int y             = blockIdx.y * blockDim.y + threadIdx.y;
-  if (y >= static_cast<int>(height)) return;
+  const int y = blockIdx.y * blockDim.y + threadIdx.y;
+  if (y >= static_cast<int>(height))
+    return;
 
   // Cooperatively load the tile (with halo) into shared memory.
   for (int i = threadIdx.x; i < tile_w; i += blockDim.x) {
@@ -44,11 +46,13 @@ __global__ void MorphRowKernel(const std::uint8_t* __restrict__ d_in,
     }
   }
   __syncthreads();
-  if (x_block_start + threadIdx.x >= static_cast<int>(width)) return;
+  if (x_block_start + threadIdx.x >= static_cast<int>(width))
+    return;
   const int x = x_block_start + threadIdx.x;
   std::uint8_t acc = is_max ? 0 : 255;
   for (int dx = -radius; dx <= radius; ++dx) {
-    if (!InsideDisc(dx, 0, radius)) continue;
+    if (!InsideDisc(dx, 0, radius))
+      continue;
     const int sx = threadIdx.x + 64 + dx;
     const std::uint8_t v = s_tile[sx];
     acc = is_max ? max(acc, v) : min(acc, v);
@@ -58,13 +62,15 @@ __global__ void MorphRowKernel(const std::uint8_t* __restrict__ d_in,
 
 // Separable 1D pass along the column axis.
 __global__ void MorphColKernel(const std::uint8_t* __restrict__ d_in,
-                               std::uint8_t* __restrict__ d_out, std::size_t width,
-                               std::size_t height, int radius, bool is_max) {
+                               std::uint8_t* __restrict__ d_out,
+                               std::size_t width, std::size_t height,
+                               int radius, bool is_max) {
   extern __shared__ std::uint8_t s_tile[];
   const int tile_h = blockDim.y + 2 * 64;
-  const int x               = blockIdx.x * blockDim.x + threadIdx.x;
-  const int y_block_start  = blockIdx.y * blockDim.y;
-  if (x >= static_cast<int>(width)) return;
+  const int x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int y_block_start = blockIdx.y * blockDim.y;
+  if (x >= static_cast<int>(width))
+    return;
 
   for (int i = threadIdx.y; i < tile_h; i += blockDim.y) {
     const int gy = y_block_start - 64 + i;
@@ -75,11 +81,13 @@ __global__ void MorphColKernel(const std::uint8_t* __restrict__ d_in,
     }
   }
   __syncthreads();
-  if (y_block_start + threadIdx.y >= static_cast<int>(height)) return;
+  if (y_block_start + threadIdx.y >= static_cast<int>(height))
+    return;
   const int y = y_block_start + threadIdx.y;
   std::uint8_t acc = is_max ? 0 : 255;
   for (int dy = -radius; dy <= radius; ++dy) {
-    if (!InsideDisc(0, dy, radius)) continue;
+    if (!InsideDisc(0, dy, radius))
+      continue;
     const int sy = threadIdx.y + 64 + dy;
     const std::uint8_t v = s_tile[sy];
     acc = is_max ? max(acc, v) : min(acc, v);
@@ -103,8 +111,8 @@ void DispatchRow(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
   dim3 grid(static_cast<unsigned int>((w + block.x - 1) / block.x),
             static_cast<unsigned int>((h + block.y - 1) / block.y));
   size_t smem = (block.x + 128) * sizeof(std::uint8_t);
-  MorphRowKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h,
-                                                radius, is_max);
+  MorphRowKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h, radius,
+                                                is_max);
 }
 
 void DispatchCol(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
@@ -121,13 +129,14 @@ void DispatchCol(const std::uint8_t* d_in, std::uint8_t* d_out, std::size_t w,
   dim3 grid(static_cast<unsigned int>((w + block.x - 1) / block.x),
             static_cast<unsigned int>((h + block.y - 1) / block.y));
   size_t smem = (block.y + 128) * sizeof(std::uint8_t);
-  MorphColKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h,
-                                                radius, is_max);
+  MorphColKernel<<<grid, block, smem, stream>>>(d_in, d_out, w, h, radius,
+                                                is_max);
 }
 
 void Erode(std::uint8_t* d_io, std::size_t width, std::size_t height,
            std::size_t radius, cudaStream_t stream) {
-  if (d_io == nullptr) return;
+  if (d_io == nullptr)
+    return;
   // Erosion = min over SE. We ping-pong through a scratch buffer.
   std::uint8_t* d_scratch = nullptr;
   cudaMalloc(&d_scratch, width * height * sizeof(std::uint8_t));
@@ -140,7 +149,8 @@ void Erode(std::uint8_t* d_io, std::size_t width, std::size_t height,
 
 void Dilate(std::uint8_t* d_io, std::size_t width, std::size_t height,
             std::size_t radius, cudaStream_t stream) {
-  if (d_io == nullptr) return;
+  if (d_io == nullptr)
+    return;
   std::uint8_t* d_scratch = nullptr;
   cudaMalloc(&d_scratch, width * height * sizeof(std::uint8_t));
   DispatchCol(d_io, d_scratch, width, height, static_cast<int>(radius), true,
@@ -152,14 +162,16 @@ void Dilate(std::uint8_t* d_io, std::size_t width, std::size_t height,
 
 void Open(std::uint8_t* d_io, std::size_t width, std::size_t height,
           std::size_t radius, cudaStream_t stream) {
-  if (radius == 0) return;
+  if (radius == 0)
+    return;
   Erode(d_io, width, height, radius, stream);
   Dilate(d_io, width, height, radius, stream);
 }
 
 void Close(std::uint8_t* d_io, std::size_t width, std::size_t height,
            std::size_t radius, cudaStream_t stream) {
-  if (radius == 0) return;
+  if (radius == 0)
+    return;
   Dilate(d_io, width, height, radius, stream);
   Erode(d_io, width, height, radius, stream);
 }
