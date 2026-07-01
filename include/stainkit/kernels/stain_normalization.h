@@ -54,11 +54,16 @@ std::vector<int> BuildAngleHistogram(const std::vector<float>& angles);
 // Stage 3: reconstruct RGB with the target stain matrix.
 // ---------------------------------------------------------------------------
 // `d_in_stain_od` is the 2-channel OD image.
-// `target.matrix` is the *target* H&E basis.
+// `h_target_matrix_6` is a HOST pointer to six floats (H_r, H_g, H_b,
+// E_r, E_g, E_b) — the target stain basis. Raw pointers are used (rather
+// than StainTarget&) to avoid cross-TU ABI hazards.
+// `h_target_conc_3` is a HOST pointer to three floats (H conc, E conc,
+// residual conc).
 // `d_out_rgb` must hold `width * height * 3` floats.
 void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
-                             std::size_t height, const StainTarget& target,
-                             float* d_out_rgb, void* stream = nullptr);
+                             std::size_t height, const float* h_target_matrix_6,
+                             const float* h_target_conc_3, float* d_out_rgb,
+                             void* stream = nullptr);
 
 // ---------------------------------------------------------------------------
 // One-shot helper that runs the full pipeline for a single image.

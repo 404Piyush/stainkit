@@ -66,13 +66,26 @@ unit holds the device-side kernel itself. All launchers take a
 stream).
 
 * `color_deconvolution.h` — `ColorDeconvolveRgb` returns elapsed ms.
+  Takes a raw `const float* h_matrix_values_6` (6 floats, host memory)
+  instead of a `StainMatrix` reference to avoid cross-TU ABI hazards.
 * `stain_normalization.h` — `NormaliseStainFull` runs the full
   Macenko pipeline on a single image; stages are also exposed
-  separately for fine-grained reuse.
+  separately for fine-grained reuse. Takes raw `const float*` for the
+  stain matrix and target concentrations.
 * `tissue_mask.h` — `OtsuThresholdHost` / `OtsuThresholdDevice` and
   `ThresholdToMask`.
 * `od_conversion.h` — RGB↔OD and luminance reductions.
 * `morphology.h` — separable binary morphology with a disc SE.
+
+### Cross-`.cu` ABI contract
+
+All kernel launchers exchange only trivially-copyable types across
+the `.cu → .cu` and `g++ → nvcc` boundaries. The complex value types
+(`StainMatrix`, `StainTarget`) live on the host side; when a `.cu`
+launcher needs one, the caller passes a pointer to its raw `float`
+data and the launcher uploads to device memory internally. This was
+introduced after a SIGSEGV on Colab's CUDA 12.8 runtime that was
+traced to `StainMatrix` ABI mismatch when passed by reference.
 
 ## CLI
 

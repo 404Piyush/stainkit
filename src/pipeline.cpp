@@ -375,8 +375,11 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   std::fprintf(stderr, "[RunWithCpuBaseline] entering deconvolve\n"); std::fflush(stderr);
   {
     ScopedEvent ev(stream);
+    // Pass the raw host float pointer to avoid cross-TU ABI hazards
+    // with StainMatrix.
     kernels::ColorDeconvolveRgb(
-        static_cast<const float*>(d_rgb_in.ptr), w, h, target.matrix,
+        static_cast<const float*>(d_rgb_in.ptr), w, h,
+        target.matrix.values.data(),
         static_cast<float*>(d_stain_od.ptr), 2, 1, stream);
     result.timing.deconvolve_ms = ev.elapsed_ms;
   }

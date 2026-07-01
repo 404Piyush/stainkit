@@ -30,10 +30,16 @@ namespace kernels {
 // the input in device memory (see Pipeline). The output `stain_od` buffer
 // must hold `width * height * num_stains` floats.
 //
-// All pointers must be device pointers. The function returns the elapsed
-// time in milliseconds as measured by CUDA events on the default stream.
+// `h_matrix_values_6` is a HOST pointer to six contiguous floats
+// (H_r, H_g, H_b, E_r, E_g, E_b). Passing the raw float array instead of
+// a `StainMatrix` reference avoids cross-TU ABI hazards that have crashed
+// this launcher on Colab's CUDA 12.8 runtime.
+//
+// All other pointers must be device pointers. The function returns the
+// elapsed time in milliseconds as measured by CUDA events on the
+// supplied stream.
 float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
-                         std::size_t height, const StainMatrix& matrix,
+                         std::size_t height, const float* h_matrix_values_6,
                          float* d_out_stain_od, int num_stains = 2,
                          int num_streams = 1, void* stream = nullptr);
 

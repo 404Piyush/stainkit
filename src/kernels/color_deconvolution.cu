@@ -59,25 +59,30 @@ inline cudaStream_t AsStream(void* s) {
 }  // namespace
 
 float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
-                         std::size_t height, const StainMatrix& matrix,
+                         std::size_t height, const float* h_matrix_values_6,
                          float* d_out_stain_od, int num_stains,
                          int num_streams, void* stream) {
+  std::fprintf(stderr, "[CDR] enter w=%zu h=%zu\n", width, height); std::fflush(stderr);
   if (d_in_rgb == nullptr || d_out_stain_od == nullptr) {
     throw std::invalid_argument("ColorDeconvolveRgb: null device pointer");
+  }
+  if (h_matrix_values_6 == nullptr) {
+    throw std::invalid_argument("ColorDeconvolveRgb: null host matrix");
   }
   if (width == 0 || height == 0) {
     throw std::invalid_argument("ColorDeconvolveRgb: zero-sized image");
   }
+  std::fprintf(stderr, "[CDR] past null check\n"); std::fflush(stderr);
 
   // Build a 3x3 stain matrix on the host. We use the (R, G, B)-column-major
   // form. The third column is taken as the cross product of H and E.
   std::array<float, 9> m{};
-  m[0] = matrix.values[0];
-  m[1] = matrix.values[1];
-  m[2] = matrix.values[2];
-  m[3] = matrix.values[3];
-  m[4] = matrix.values[4];
-  m[5] = matrix.values[5];
+  m[0] = h_matrix_values_6[0];
+  m[1] = h_matrix_values_6[1];
+  m[2] = h_matrix_values_6[2];
+  m[3] = h_matrix_values_6[3];
+  m[4] = h_matrix_values_6[4];
+  m[5] = h_matrix_values_6[5];
   const float hx = m[0], hy = m[1], hz = m[2];
   const float ex = m[3], ey = m[4], ez = m[5];
   m[6] = hy * ez - hz * ey;
@@ -109,6 +114,7 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   inv[6] = (m[3] * m[7] - m[4] * m[6]) * inv_det;
   inv[7] = (m[1] * m[6] - m[0] * m[7]) * inv_det;
   inv[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
+  std::fprintf(stderr, "[CDR] inverted matrix\n"); std::fflush(stderr);
 
   // Upload the inverse to a small device buffer. This is safer than
   // cudaMemcpyToSymbolAsync (which segfaulted on Colab's runtime).
