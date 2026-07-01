@@ -123,9 +123,20 @@ def main() -> int:
         (args.workdir / "before_after_panels").mkdir()
         for f in arts["panel"]:
             shutil.copy(f, args.workdir / "before_after_panels" / f.name)
+    # The hand-picked docs/screenshots/ folder already contains both
+    # benchmark plots and before/after panels, but we copy its
+    # *contents* under clearly named subfolders so reviewers can find
+    # each artifact type at a glance.
     (args.workdir / "screenshots").mkdir()
+    (args.workdir / "screenshots" / "plots").mkdir()
+    (args.workdir / "screenshots" / "before_after_panels").mkdir()
     for f in arts["screenshots"]:
-        shutil.copy(f, args.workdir / "screenshots" / f.name)
+        if f.name.startswith("benchmark_"):
+            shutil.copy(f, args.workdir / "screenshots" / "plots" / f.name)
+        elif f.name.endswith("_panel.png"):
+            shutil.copy(f, args.workdir / "screenshots" / "before_after_panels" / f.name)
+        else:
+            shutil.copy(f, args.workdir / "screenshots" / f.name)
 
     write_proof_snippet(args.workdir)
 
