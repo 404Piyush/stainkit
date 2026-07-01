@@ -1,0 +1,5 @@
+# Pinned versions that match the HF Spaces T4 small image as of 2026.
+# Keep these conservative — every bump is a maintenance event.
+gradio==4.44.0
+numpy==1.26.4
+Pillow==10.4.0

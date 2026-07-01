@@ -108,11 +108,18 @@ jobs:
         run: cmake --build build -j 2>&1 | tail -50
 
       - name: Verify binaries
+        # The nvidia/cuda minimal image does NOT ship `file`. We use
+        # bash test(1) for executable checks and `head -c` for the
+        # ELF magic-number check (CUDA binaries start with 0x7f 'ELF').
         run: |
           test -x build/bin/stainkit || (echo "stainkit binary missing"; exit 1)
           test -x build/bin/stainkit-bench || (echo "stainkit-bench binary missing"; exit 1)
-          file build/bin/stainkit
-          file build/bin/stainkit-bench
+          echo "=== ELF magic on stainkit ==="
+          head -c 4 build/bin/stainkit | od -An -c | tr -d ' \n'
+          echo ""
+          echo "=== ELF magic on stainkit-bench ==="
+          head -c 4 build/bin/stainkit-bench | od -An -c | tr -d ' \n'
+          echo ""
           ./build/bin/stainkit --help > /dev/null
           ./build/bin/stainkit-bench --help > /dev/null || true
           echo "CUDA binaries built and runnable on host."
