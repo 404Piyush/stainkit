@@ -130,8 +130,11 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
         std::string("ColorDeconvolveRgb: cudaMalloc failed: ") +
         cudaGetErrorString(e1));
   }
+  std::fprintf(stderr, "[CDR] about to cudaMemcpyAsync d=%p src=%p sz=%zu s=%p\n",
+               d_stain_inv, inv.data(), sizeof(float)*9, (void*)s); std::fflush(stderr);
   cudaError_t e2 = cudaMemcpyAsync(d_stain_inv, inv.data(), sizeof(float) * 9,
                                    cudaMemcpyHostToDevice, s);
+  std::fprintf(stderr, "[CDR] cudaMemcpyAsync returned e2=%d (%s)\n", (int)e2, cudaGetErrorString(e2)); std::fflush(stderr);
   if (e2 != cudaSuccess) {
     cudaFree(d_stain_inv);
     throw std::runtime_error(
