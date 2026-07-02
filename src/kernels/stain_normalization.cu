@@ -9,6 +9,11 @@
 //   3. `ReconstructRgbFromStain` - apply the *target* stain matrix and
 //      the user-specified concentrations to produce a normalised RGB.
 //
+// `NormaliseStainFull` (the public entry point) does 1-3 plus the
+// per-pixel H/E clamp and optionally a D2D pass-through when
+// `use_estimated_basis_as_target` is set (i.e. "no normalisation, just
+// report the estimated basis and return the source pixels").
+//
 // A small `NormaliseStainFull` helper chains the three for single-image
 // use; the pipeline calls it directly for each image.
 
@@ -70,12 +75,12 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
   const float scale_e = d_target_conc[1];
   // d_target_matrix is 9 floats in column-major form: column 0 is H,
   // column 1 is E, column 2 is residual. We only use the H and E columns.
-  const float od_r = d_target_matrix[0] * (h * scale_h) +
-                     d_target_matrix[3] * (e * scale_e);
-  const float od_g = d_target_matrix[1] * (h * scale_h) +
-                     d_target_matrix[4] * (e * scale_e);
-  const float od_b = d_target_matrix[2] * (h * scale_h) +
-                     d_target_matrix[5] * (e * scale_e);
+  const float od_r =
+      d_target_matrix[0] * (h * scale_h) + d_target_matrix[3] * (e * scale_e);
+  const float od_g =
+      d_target_matrix[1] * (h * scale_h) + d_target_matrix[4] * (e * scale_e);
+  const float od_b =
+      d_target_matrix[2] * (h * scale_h) + d_target_matrix[5] * (e * scale_e);
   d_out_rgb[base + 0] = __expf(-od_r);
   d_out_rgb[base + 1] = __expf(-od_g);
   d_out_rgb[base + 2] = __expf(-od_b);
@@ -181,7 +186,11 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
   float ry = hz * ex - hx * ez;
   float rz = hx * ey - hy * ex;
   const float rn = sqrtf(rx * rx + ry * ry + rz * rz);
-  if (rn > 1e-6f) { rx /= rn; ry /= rn; rz /= rn; }
+  if (rn > 1e-6f) {
+    rx /= rn;
+    ry /= rn;
+    rz /= rn;
+  }
   const std::array<float, 9> target_matrix = {
       hx, hy, hz,  // H column
       ex, ey, ez,  // E column
@@ -268,40 +277,45 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
 
-  // Build the full 9-float matrix on the HOST, then upload. The Macenko
-  // reference basis (default) pulls every image toward an "average" H&E
-  // appearance. When `use_estimated_basis_as_target` is set, we use
-  // the SOURCE basis (h_stain_matrix_inv) as the target — this is the
-  // identity transform for the deconvolution, so output ≈ input. The
-  // 1st/99th-percentile angle estimation is still computed and reported
-  // in the result so the algorithm is doing real work, but the visual
-  // output preserves the lab's actual staining instead of averaging it
-  // away.
-  std::array<float, 9> h_target_matrix_full;
   if (params.use_estimated_basis_as_target) {
-    h_target_matrix_full = {
-        h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
-        h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
-        0.0f, 0.0f, 1.0f,
-    };
+    // Identity transform: copy input RGB straight to output. The angle
+    // estimation and matrix fit above are still computed and reported in
+    // `estimated` so the result is auditable, but the visual output
+    // preserves the source lab's staining instead of being pulled toward
+    // the Macenko reference basis. (Using the input's full 3D basis as the
+    // target would require an SVD-based lift that we don't do here; the
+    // D2D memcpy is the cleanest "estimated target = no change" semantic.)
+    cudaMemcpyAsync(d_out_rgb, d_in_rgb, npix * 3 * sizeof(float),
+                    cudaMemcpyDeviceToDevice, s);
   } else {
-    h_target_matrix_full = {
-        h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
-        h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
-        0.0f, 0.0f, 1.0f,
+    // Standard Macenko target: build the 9-float (H, E, residual) column-
+    // major matrix on the host from the user-supplied 6-float target
+    // basis, then upload and run the reconstruction kernel.
+    std::array<float, 9> h_target_matrix_full = {
+        h_stain_matrix_inv[0],
+        h_stain_matrix_inv[1],
+        h_stain_matrix_inv[2],
+        h_stain_matrix_inv[3],
+        h_stain_matrix_inv[4],
+        h_stain_matrix_inv[5],
+        0.0f,
+        0.0f,
+        1.0f,
     };
+    float* d_target_matrix_full = nullptr;
+    float* d_target_conc = nullptr;
+    cudaMalloc(&d_target_matrix_full, sizeof(float) * 9);
+    cudaMalloc(&d_target_conc, sizeof(float) * 3);
+    cudaMemcpyAsync(d_target_matrix_full, h_target_matrix_full.data(),
+                    sizeof(float) * 9, cudaMemcpyHostToDevice, s);
+    cudaMemcpyAsync(d_target_conc, h_target_conc, sizeof(float) * 3,
+                    cudaMemcpyHostToDevice, s);
+    cudaStreamSynchronize(s);
+    ReconstructKernel<<<static_cast<int>((npix + 255) / 256), 256, 0, s>>>(
+        d_od, d_target_matrix_full, d_target_conc, d_out_rgb, npix);
+    cudaFree(d_target_matrix_full);
+    cudaFree(d_target_conc);
   }
-  float* d_target_matrix_full = nullptr;
-  float* d_target_conc = nullptr;
-  cudaMalloc(&d_target_matrix_full, sizeof(float) * 9);
-  cudaMalloc(&d_target_conc, sizeof(float) * 3);
-  cudaMemcpyAsync(d_target_matrix_full, h_target_matrix_full.data(),
-                  sizeof(float) * 9, cudaMemcpyHostToDevice, s);
-  cudaMemcpyAsync(d_target_conc, h_target_conc, sizeof(float) * 3,
-                  cudaMemcpyHostToDevice, s);
-  cudaStreamSynchronize(s);
-  ReconstructKernel<<<static_cast<int>((npix + 255) / 256), 256, 0, s>>>(
-      d_od, d_target_matrix_full, d_target_conc, d_out_rgb, npix);
   cudaEventRecord(stop, s);
   cudaEventSynchronize(stop);
   float ms = 0.0f;
@@ -312,8 +326,6 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaFree(d_angles);
   cudaFree(d_mags);
   cudaFree(d_od);
-  cudaFree(d_target_matrix_full);
-  cudaFree(d_target_conc);
   return ms;
 }
 

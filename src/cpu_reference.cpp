@@ -73,6 +73,20 @@ Image CpuReferenceStainNormalise(const Image& input,
   if (input.empty() || w == 0 || h == 0) {
     throw std::invalid_argument("CpuReferenceStainNormalise: empty input");
   }
+
+  // -- Estimated-target shortcut: identity transform, GPU parity --
+  // When `use_estimated_basis_as_target` is set, GPU path does a D2D
+  // memcpy of input pixels. Mirror that here so the CPU baseline matches
+  // the GPU output (a no-op for visual comparison) and timings are
+  // comparable. The angle estimation and basis fit below are skipped to
+  // keep the path cheap.
+  if (params.use_estimated_basis_as_target) {
+    if (elapsed_ms != nullptr) {
+      const auto t1 = std::chrono::steady_clock::now();
+      *elapsed_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    }
+    return input;
+  }
   if (input.layout != PixelLayout::kRgb) {
     throw std::invalid_argument(
         "CpuReferenceStainNormalise: only 3-channel RGB is supported");
