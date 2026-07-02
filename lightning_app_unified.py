@@ -16,13 +16,15 @@ from __future__ import annotations
 import base64
 import os
 import shutil
+import asyncio
 import subprocess
 import tempfile
 import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
+from fastapi.websockets import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -66,6 +68,45 @@ def healthz() -> dict:
         "static_dir": str(STATIC_DIR),
         "binary_exists": Path(STK_BIN).is_file(),
     }
+
+
+# ---------------------------------------------------------------------------
+# WebSocket: lets the frontend wait for the backend to come online.
+# Sends JSON status messages until the binary is ready, then closes with
+# "ready" so the client knows it can POST /normalize.
+# ---------------------------------------------------------------------------
+@app.websocket("/ws")
+async def ws_status(ws: WebSocket):
+    await ws.accept()
+    started_at = time.monotonic()
+    try:
+        while True:
+            if Path(STK_BIN).is_file():
+                # Local backend is alive. Tell the client we're ready.
+                await ws.send_json({
+                    "phase": "ready",
+                    "elapsed_s": round(time.monotonic() - started_at, 1),
+                })
+                # Keep the socket open for a short grace period so the
+                # client can submit /normalize before we tear down.
+                await asyncio.sleep(2.0)
+                await ws.close()
+                return
+            elapsed = time.monotonic() - started_at
+            # Phases the client uses to drive a progress bar / status text.
+            phase = "waking" if elapsed < 30 else "booting"
+            await ws.send_json({
+                "phase": phase,
+                "elapsed_s": round(elapsed, 1),
+            })
+            await asyncio.sleep(2.0)
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 # Inline HTML in case the static files aren't deployed. This is the
