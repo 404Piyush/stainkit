@@ -118,7 +118,11 @@ struct StainTarget {
 struct PipelineParams {
   // Otsu tissue-mask controls.
   bool compute_tissue_mask = true;
-  float otsu_smoothing_radius = 3.0f;
+  // Morphology radius for the tissue mask. 0 = no smoothing (raw Otsu).
+  // The default is 0 because the morphology kernel produces block-edge
+  // artefacts on certain image sizes; if you want a smoother mask, set
+  // this to 2-5 via the CLI.
+  float otsu_smoothing_radius = 0.0f;
   float min_tissue_area_fraction = 0.05f;
 
   // Macenko controls.

@@ -292,6 +292,11 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   DeviceBuffer d_rgb_in(rgb_sz);
   DeviceBuffer d_rgb_out(rgb_sz);
   DeviceBuffer d_stain_od(od_sz);
+  // Keep a copy of the input on the device for the tissue mask. The mask
+  // is computed on the raw input (which has clear tissue/background
+  // contrast) rather than on the stain-normalised output (which is
+  // pulled toward an "average" H&E appearance and has lower variance).
+  DeviceBuffer d_rgb_mask_src(rgb_sz);
   DeviceBuffer d_lum(lum_sz);
   DeviceBuffer d_mask(mask_sz);
 
@@ -309,6 +314,8 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   // -- H2D --
   cudaMemcpyAsync(d_rgb_in.ptr, host_rgb.data(), rgb_sz, cudaMemcpyHostToDevice,
                   stream);
+  cudaMemcpyAsync(d_rgb_mask_src.ptr, host_rgb.data(), rgb_sz,
+                  cudaMemcpyHostToDevice, stream);
   copy_h2d_ev.MarkStop();
   result.timing.copy_h2d_ms = copy_h2d_ev.elapsed_ms;
 
@@ -337,9 +344,9 @@ PipelineResult Pipeline::RunWithCpuBaseline(const Image& input,
   result.estimated_matrix = est;
   result.timing.normalise_ms = normalise_ev.elapsed_ms;
 
-  // -- Tissue mask --
+  // -- Tissue mask (computed on the raw INPUT, not the normalised output) --
   if (params.compute_tissue_mask) {
-    kernels::RgbToLuminance(static_cast<const float*>(d_rgb_out.ptr), w, h,
+    kernels::RgbToLuminance(static_cast<const float*>(d_rgb_mask_src.ptr), w, h,
                             static_cast<float*>(d_lum.ptr), stream);
     const float threshold = kernels::OtsuThresholdDevice(
         static_cast<const float*>(d_lum.ptr), w, h, stream);
