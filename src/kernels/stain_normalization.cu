@@ -57,11 +57,14 @@ __global__ void ReconstructKernel(const float* __restrict__ d_in_stain_od,
     return;
   const std::size_t base = 3 * idx;
   // Use the per-pixel H, E concentrations from the input deconvolution,
-  // then map them through the target stain matrix. This preserves the
-  // spatial variation of the source image while changing its stain
-  // appearance to the target.
-  const float h = d_in_stain_od[2 * idx + 0];
-  const float e = d_in_stain_od[2 * idx + 1];
+  // then map them through the target stain matrix. The Macenko inverse
+  // matrix is not orthogonal, so individual pixel concentrations can be
+  // slightly negative for stained tissue — clamp to zero before
+  // reconstruction so the output OD stays non-negative.
+  const float h_raw = d_in_stain_od[2 * idx + 0];
+  const float e_raw = d_in_stain_od[2 * idx + 1];
+  const float h = fmaxf(h_raw, 0.0f);
+  const float e = fmaxf(e_raw, 0.0f);
   // d_target_conc provides optional per-stain scaling (1.0 = passthrough).
   const float scale_h = d_target_conc[0];
   const float scale_e = d_target_conc[1];
