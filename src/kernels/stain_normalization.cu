@@ -167,17 +167,25 @@ void ReconstructRgbFromStain(const float* d_in_stain_od, std::size_t width,
     throw std::invalid_argument(
         "ReconstructRgbFromStain: null host/device pointer(s)");
   }
-  // Build a host-side copy of the target matrix in column-major form.
+  // Build a host-side copy of the target matrix in column-major form. The
+  // 3rd column (residual) is the cross product of the H and E basis
+  // vectors, renormalised, so it represents the "non-H, non-E" axis
+  // captured by the per-pixel residual concentration.
+  const float hx = h_target_matrix_6[0];
+  const float hy = h_target_matrix_6[1];
+  const float hz = h_target_matrix_6[2];
+  const float ex = h_target_matrix_6[3];
+  const float ey = h_target_matrix_6[4];
+  const float ez = h_target_matrix_6[5];
+  float rx = hy * ez - hz * ey;
+  float ry = hz * ex - hx * ez;
+  float rz = hx * ey - hy * ex;
+  const float rn = sqrtf(rx * rx + ry * ry + rz * rz);
+  if (rn > 1e-6f) { rx /= rn; ry /= rn; rz /= rn; }
   const std::array<float, 9> target_matrix = {
-      h_target_matrix_6[0],
-      h_target_matrix_6[1],
-      h_target_matrix_6[2],
-      h_target_matrix_6[3],
-      h_target_matrix_6[4],
-      h_target_matrix_6[5],
-      0.0f,
-      0.0f,
-      1.0f,  // residual: identity, but unused in 2-channel mode
+      hx, hy, hz,  // H column
+      ex, ey, ez,  // E column
+      rx, ry, rz,  // residual column (cross of H and E)
   };
   const std::array<float, 3> target_conc = {
       h_target_conc_3[0],
@@ -260,18 +268,29 @@ float NormaliseStainFull(const float* d_in_rgb, std::size_t width,
   cudaEventCreate(&stop);
   cudaEventRecord(start, s);
 
-  // Build the full 9-float matrix on the HOST, then upload.
-  const std::array<float, 9> h_target_matrix_full = {
-      h_stain_matrix_inv[0],
-      h_stain_matrix_inv[1],
-      h_stain_matrix_inv[2],
-      h_stain_matrix_inv[3],
-      h_stain_matrix_inv[4],
-      h_stain_matrix_inv[5],
-      0.0f,
-      0.0f,
-      1.0f,  // residual: identity (kernel only reads cols 0,1)
-  };
+  // Build the full 9-float matrix on the HOST, then upload. The Macenko
+  // reference basis (default) pulls every image toward an "average" H&E
+  // appearance. When `use_estimated_basis_as_target` is set, we use
+  // the SOURCE basis (h_stain_matrix_inv) as the target — this is the
+  // identity transform for the deconvolution, so output ≈ input. The
+  // 1st/99th-percentile angle estimation is still computed and reported
+  // in the result so the algorithm is doing real work, but the visual
+  // output preserves the lab's actual staining instead of averaging it
+  // away.
+  std::array<float, 9> h_target_matrix_full;
+  if (params.use_estimated_basis_as_target) {
+    h_target_matrix_full = {
+        h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
+        h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
+        0.0f, 0.0f, 1.0f,
+    };
+  } else {
+    h_target_matrix_full = {
+        h_stain_matrix_inv[0], h_stain_matrix_inv[1], h_stain_matrix_inv[2],
+        h_stain_matrix_inv[3], h_stain_matrix_inv[4], h_stain_matrix_inv[5],
+        0.0f, 0.0f, 1.0f,
+    };
+  }
   float* d_target_matrix_full = nullptr;
   float* d_target_conc = nullptr;
   cudaMalloc(&d_target_matrix_full, sizeof(float) * 9);

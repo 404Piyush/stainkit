@@ -129,6 +129,13 @@ struct PipelineParams {
   float stain_percentile_low = 1.0f;
   float stain_percentile_high = 99.0f;
   bool regularize_stain_matrix = true;
+  // When true, the reconstruction uses the source's estimated stain basis
+  // (1st/99th percentile angles) as the target rather than the standard
+  // Macenko reference basis. This gives output ≈ input (preserves the
+  // lab's actual staining) and is the best visual choice for demos.
+  // Set to false to use the standard Macenko basis (which pulls every
+  // image toward an "average" H&E appearance).
+  bool use_estimated_basis_as_target = false;
 
   // Memory / stream configuration.
   int num_streams = 4;

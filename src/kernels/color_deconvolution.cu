@@ -71,6 +71,8 @@ float ColorDeconvolveRgb(const float* d_in_rgb, std::size_t width,
   if (width == 0 || height == 0) {
     throw std::invalid_argument("ColorDeconvolveRgb: zero-sized image");
   }
+  (void)num_stains;
+  (void)num_streams;
 
   // Build a 3x3 stain matrix on the host. We use the (R, G, B)-column-major
   // form. The third column is taken as the cross product of H and E.

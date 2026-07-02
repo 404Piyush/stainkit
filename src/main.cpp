@@ -44,6 +44,7 @@ struct CliArgs {
   int num_streams = 4;
   bool pinned_memory = true;
   bool compute_mask = true;
+  bool use_estimated_basis_as_target = true;  // default: best visual
   bool benchmark = false;
   fs::path csv_path;
   bool show_help = false;
@@ -125,6 +126,10 @@ bool ParseArgs(int argc, char** argv, CliArgs& out) {
       out.pinned_memory = false;
     } else if (a == "--no-mask") {
       out.compute_mask = false;
+    } else if (a == "--estimated-target") {
+      out.use_estimated_basis_as_target = true;
+    } else if (a == "--standard-target") {
+      out.use_estimated_basis_as_target = false;
     } else if (a == "--cpu") {
       out.cpu_only = true;
     } else if (a == "--benchmark") {
@@ -216,6 +221,7 @@ int main(int argc, char** argv) {
   params.use_pinned_memory = args.pinned_memory;
   params.compute_tissue_mask = args.compute_mask;
   params.overlap_io_with_compute = (args.num_streams > 1);
+  params.use_estimated_basis_as_target = args.use_estimated_basis_as_target;
 
   // -- Discover input images --
   std::vector<fs::path> inputs = stainkit::ListImagesIn(args.input_dir);
