@@ -1,11 +1,6 @@
 name: keep-alive
 
 on:
-  schedule:
-    # Ping every 2 minutes so the Lightning Studio backend never auto-sleeps.
-    # Lightning AI Studios auto-stop after ~5 min of idle on the free tier.
-    # A 2-minute keep-alive is the cheapest reliable cadence.
-    - cron: '*/2 * * * *'
   workflow_dispatch:
 
 jobs:
