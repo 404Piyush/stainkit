@@ -9,6 +9,14 @@ This avoids the Vercel + CORS + bot-protection dance. One URL, one
 service, one place to monitor. The Lightning Studio auto-sleeps
 after `auto_sleep_time` seconds of inactivity, so we only pay for
 GPU time when an actual request is in flight.
+
+Security hardening (audit 2026-07-09):
+  - Shared-secret auth via STK_API_KEY env var (X-API-Key header)
+  - CORS tightened to known origins only (no wildcard)
+  - Upload cap 50 MB
+  - Magic-byte file-type validation
+  - /healthz no longer leaks server paths
+  - Periodic cleanup of /tmp/stk_uploads/<id>/ older than 1 hour
 """
 
 from __future__ import annotations
@@ -21,9 +29,20 @@ import subprocess
 import tempfile
 import time
 import uuid
+import secrets
 from pathlib import Path
+from typing import Iterable
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+)
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
@@ -36,6 +55,24 @@ STK_BIN     = os.environ.get("STK_BIN",     "/teamspace/studios/this_studio/stai
 STK_WORKDIR = os.environ.get("STK_WORKDIR", "/tmp/stk_uploads")
 PORT        = int(os.environ.get("PORT", "8000"))
 STATIC_DIR  = Path(os.environ.get("STATIC_DIR", "/teamspace/studios/this_studio/stainkit/lightning_static"))
+# STK_API_KEY is the shared secret the frontend must send via the
+# X-API-Key header on /normalize and /ws. If unset at startup we
+# generate a random one and log it once so the operator can paste it
+# into the frontend config. /healthz stays unauthenticated so external
+# uptime checks still work.
+STK_API_KEY = os.environ.get("STK_API_KEY") or secrets.token_urlsafe(24)
+# Origins allowed to call this backend. Keep tight: the Vercel custom
+# domain plus the Vercel production alias, plus localhost for dev.
+ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get(
+        "STK_ALLOWED_ORIGINS",
+        "https://stainkit.404piyush.me,https://stainkit-frontend.vercel.app,http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",") if o.strip()
+]
+# Maximum accepted upload size in bytes (50 MB).
+MAX_UPLOAD_BYTES = int(os.environ.get("STK_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+# Workdir directories older than this are eligible for cleanup.
+WORKDIR_TTL_SECONDS = int(os.environ.get("STK_WORKDIR_TTL", "3600"))
 
 os.makedirs(STK_WORKDIR, exist_ok=True)
 
@@ -46,11 +83,108 @@ app = FastAPI(title="stainkit demo", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Auth: shared-secret X-API-Key header
+# ---------------------------------------------------------------------------
+def _require_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> None:
+    # Constant-time comparison to avoid timing oracles.
+    if x_api_key is None or not secrets.compare_digest(x_api_key, STK_API_KEY):
+        raise HTTPException(status_code=401, detail="invalid or missing API key")
+
+
+async def _require_api_key_ws(ws: WebSocket) -> None:
+    # WebSockets can't use Depends, so check the header manually before
+    # accepting the connection.
+    token = ws.headers.get("x-api-key") or ws.query_params.get("k")
+    if token is None or not secrets.compare_digest(token, STK_API_KEY):
+        await ws.close(code=4401)
+        raise HTTPException(status_code=401, detail="invalid or missing API key")
+
+
+# ---------------------------------------------------------------------------
+# File-type validation: cheap magic-byte check
+# ---------------------------------------------------------------------------
+_MAGIC_BYTES: tuple[tuple[str, bytes], ...] = (
+    ("png",  b"\x89PNG\r\n\x1a\n"),
+    ("jpg",  b"\xff\xd8\xff"),
+    ("jpeg", b"\xff\xd8\xff"),
+    ("webp", b"RIFF"),
+    ("tiff", b"II*\x00"),
+    ("tiff", b"MM\x00*"),
+)
+
+def _validate_magic(blob: bytes) -> str:
+    """Return the detected image kind or raise HTTPException(415)."""
+    if not blob:
+        raise HTTPException(status_code=415, detail="empty file")
+    for kind, magic in _MAGIC_BYTES:
+        if blob.startswith(magic):
+            # WebP needs an extra check past the RIFF header.
+            if kind == "webp" and not blob[8:12] == b"WEBP":
+                continue
+            return kind
+    raise HTTPException(status_code=415, detail="unsupported image format")
+
+
+# ---------------------------------------------------------------------------
+# Workdir cleanup: remove <id>/ directories older than WORKDIR_TTL_SECONDS
+# ---------------------------------------------------------------------------
+def _sweep_workdir() -> int:
+    root = Path(STK_WORKDIR)
+    if not root.is_dir():
+        return 0
+    cutoff = time.time() - WORKDIR_TTL_SECONDS
+    removed = 0
+    for child in root.iterdir():
+        if not child.is_dir():
+            continue
+        try:
+            mtime = child.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < cutoff:
+            shutil.rmtree(child, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+# Throttle the sweep: only run at most once every 60 s.
+_LAST_SWEEP = [0.0]
+
+def _maybe_sweep() -> None:
+    now = time.monotonic()
+    if now - _LAST_SWEEP[0] < 60.0:
+        return
+    _LAST_SWEEP[0] = now
+    try:
+        _sweep_workdir()
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+async def _startup_log_api_key() -> None:
+    # Log the API key once so the operator can copy it into the frontend.
+    # Only printed if STK_API_KEY was NOT pre-set (i.e. we generated one).
+    if not os.environ.get("STK_API_KEY"):
+        print(f"[stainkit] generated STK_API_KEY (set in frontend config.js): {STK_API_KEY}",
+              flush=True)
+    # Best-effort initial sweep
+    try:
+        n = _sweep_workdir()
+        if n:
+            print(f"[stainkit] swept {n} stale workdir(s)", flush=True)
+    except Exception:
+        pass
 
 # Serve /styles.css, /app.js, /config.js from disk if the static
 # directory exists. Falls through to the index handler otherwise so
@@ -61,13 +195,8 @@ if STATIC_DIR.is_dir():
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {
-        "status": "ok",
-        "binary": STK_BIN,
-        "workdir": STK_WORKDIR,
-        "static_dir": str(STATIC_DIR),
-        "binary_exists": Path(STK_BIN).is_file(),
-    }
+    # Intentionally minimal: no internal paths leaked.
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +206,8 @@ def healthz() -> dict:
 # ---------------------------------------------------------------------------
 @app.websocket("/ws")
 async def ws_status(ws: WebSocket):
+    # Auth check before accept so unauth'd clients never establish the socket.
+    await _require_api_key_ws(ws)
     await ws.accept()
     started_at = time.monotonic()
     try:
@@ -251,7 +382,7 @@ def index() -> str:
     return INDEX_HTML_INLINE
 
 
-@app.post("/normalize")
+@app.post("/normalize", dependencies=[Depends(_require_api_key)])
 async def normalize(file: UploadFile = File(...)) -> JSONResponse:
     request_id = uuid.uuid4().hex[:8]
     work       = Path(STK_WORKDIR) / request_id
@@ -260,14 +391,34 @@ async def normalize(file: UploadFile = File(...)) -> JSONResponse:
     in_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Read the body with a hard size cap. FastAPI's UploadFile spools to
+    # disk for files >1MB so we don't need to worry about RAM; we just
+    # check the size and bail early if it's too large.
+    blob = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(blob) > MAX_UPLOAD_BYTES:
+        shutil.rmtree(work, ignore_errors=True)
+        raise HTTPException(
+            status_code=413,
+            detail=f"upload too large (>{MAX_UPLOAD_BYTES} bytes)",
+        )
+    if not blob:
+        shutil.rmtree(work, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="empty file")
+
+    # Validate it's actually an image by sniffing magic bytes BEFORE
+    # touching disk. This rejects text/executables early.
+    kind = _validate_magic(blob)
+
+    # Best-effort sweep of stale workdirs (throttled).
+    _maybe_sweep()
+
     suffix = Path(file.filename or "").suffix or ".png"
     in_path = in_dir / f"input{suffix}"
     try:
-        with in_path.open("wb") as f:
-            shutil.copyfileobj(file.file, f)
+        in_path.write_bytes(blob)
     except Exception as e:
         shutil.rmtree(work, ignore_errors=True)
-        raise HTTPException(status_code=400, detail=f"upload failed: {e}")
+        raise HTTPException(status_code=400, detail=f"write failed: {e}")
 
     t0 = time.monotonic()
     cmd = [
