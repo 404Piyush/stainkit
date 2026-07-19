@@ -16,6 +16,11 @@ stainkit: GPU-Accelerated H&E Stain Normalization for Digital Pathology
 https://github.com/404Piyush/stainkit
 ```
 
+The companion orchestrator at
+[github.com/404Piyush/stainkit-orchestrator](https://github.com/404Piyush/stainkit-orchestrator)
+is the Deno Deploy glue between the web frontend and this repo's GPU
+backend (see the live demo section below).
+
 ## Project Presentation / Demonstration URL
 
 ```
@@ -23,29 +28,29 @@ https://stainkit.404piyush.me/
 ```
 
 A **live, GPU-accelerated demo**. Custom domain on Vercel serves a
-single-page upload form. POSTs to a FastAPI backend running on a
-Lightning AI Studio (Tesla T4 GPU) which shells out to the stainkit
-CLI and returns the stain-normalised image + tissue mask + 3-panel
-visualisation as base64-encoded PNGs.
+single-page upload form. POSTs to a Deno Deploy orchestrator that
+resumes a JarvisLabs A30 GPU instance on demand, forwards the image to
+the FastAPI server bundled with this repo (`lightning_app_unified.py`),
+pauses the GPU, and returns base64-encoded `*_normalised.png`,
+`*_mask.png` and `*_panel.png` images.
 
-Health check (backend):
+Health check (orchestrator):
 ```bash
-curl https://stainkit.404piyush.me/?backend=https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai \
-     | head
-# (HTML page served)
-curl https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai/healthz
-# {"status":"ok","binary":"/teamspace/studios/this_studio/stainkit/build/bin/stainkit",...}
+curl https://stainkit-orchestrator-xvb9bbdpgrt1.404piyush.deno.net/healthz
+# {"status":"ok","machine_id":450107}
 ```
 
 Inference request (multipart):
 ```bash
 curl -X POST \
-     -F "file=@docs/screenshots/sample_000_panel.png;type=image/png" \
-     https://8000-01kwem8vagpeds1baw2530w0x6.cloudspaces.litng.ai/normalize
+     -F "file=@docs/screenshots/samples/02_sample.png;type=image/png" \
+     https://stainkit-orchestrator-xvb9bbdpgrt1.404piyush.deno.net/api/normalize
 ```
 
-Latency on T4: ~400 ms warm, ~3 s cold start (Lightning Studio
-auto-sleeps after 60 s idle and wakes on the next request).
+Latency on A30: ~430 ms warm GPU work, 20-60 s total round-trip when the
+instance is paused (cold-start resume). When warm, the full request
+returns in well under a second of GPU time plus a few hundred ms of
+network overhead.
 
 Alternative:
 ```
@@ -213,6 +218,7 @@ stainkit/
 ├── install.sh                  # One-shot installer
 ├── run.sh                      # One-command demo runner
 ├── colab_notebook.ipynb        # End-to-end Colab notebook
+├── lightning_app_unified.py    # FastAPI server bundled with the GPU instance
 ├── LICENSE                     # Apache 2.0
 ├── CONTRIBUTING.md             # Workflow, conventions
 ├── CODE_OF_CONDUCT.md
@@ -221,6 +227,7 @@ stainkit/
 │   ├── io.cpp                  # stb_image wrappers
 │   ├── pipeline.cpp            # Pipeline orchestration
 │   ├── cpu_reference.cpp       # CPU Macenko baseline
+│   ├── types.cpp               # POD value types
 │   ├── main.cpp                # CLI entry point
 │   ├── kernels/                # 5 CUDA kernels (.cu files)
 │   ├── benchmarks/             # CPU-vs-GPU benchmark binary
@@ -229,7 +236,7 @@ stainkit/
 ├── third_party/stb/            # Vendored stb_image
 ├── python/gpustain/            # Python wrapper + tests
 ├── scripts/                    # Dataset downloaders, sample data, bundle
-├── docs/                       # algorithms, architecture, benchmarks, screenshots
+├── docs/                       # algorithms, architecture, benchmarks, hosting, screenshots
 ├── data/benchmark/             # Sample CSV artifacts
 ├── docs/screenshots/           # Benchmark plots + before/after panels
 └── .github/workflows/ci.yml    # CI: clang-format + CUDA build

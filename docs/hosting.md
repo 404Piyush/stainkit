@@ -1,118 +1,99 @@
 # Hosting & cold-start behaviour
 
-The live demo at <https://stainkit.404piyush.me/> is a two-tier deployment:
+The live demo at <https://stainkit.404piyush.me/> is a three-tier
+deployment where each tier stays in its free tier:
 
 ```
-Vercel (frontend, free tier, never sleeps)
+Vercel                                          (frontend, free, never sleeps)
    |
-   |  POST /normalize  (multipart upload)
+   |  POST /api/normalize   (multipart upload, single request)
    v
-Lightning AI Studio "stainkit-demo-v2" (Tesla T4 GPU, free tier)
+Deno Deploy                                    (orchestrator, free, no KV cost)
+   |  resume → forward → pause → return
+   v
+JarvisLabs A30 GPU instance                    (paid per-second, paused by default)
    |
    v
 stainkit CLI binary (--target default --num-streams 4 --num-images 1)
 ```
 
-Lightning AI Studios on the free tier give **30 GPU-hours/month** and
-**auto-stop after ~5 minutes of idle**. There is no paid "always-on"
-tier without a credit card.
+Each request runs the full pipeline in a single HTTP call (`POST
+/api/normalize`). The orchestrator resumes the GPU on demand, forwards
+the file, pauses the GPU, and returns the result PNGs — typically in
+about 0.5 s of GPU work plus a 20-60 s cold start if the instance was
+paused.
 
-To stay under the 30-hour budget, the backend is **not** kept warm by a
-cron job. Instead:
+## Why this stack
 
-1. **Frontend ping** — `app.js` calls `/healthz` every 60 s while the
-   demo page is open in a browser. As long as someone has the page
-   loaded, the studio stays warm. Zero compute used when nobody is
-   looking.
-2. **Frontend retry** — `fetchWithWakeup()` retries the POST up to 6
-   times with exponential backoff (~60 s total) on cold start, so the
-   user sees a "warming up" message instead of an error.
-3. **Manual wake** — `.github/workflows/keep-alive.yml` can be
-   triggered from the Actions tab if the studio is fully stopped and
-   nobody can be on the page to ping it.
+* **Vercel** — static frontend, free tier, ~0 ms cold start.
+* **Deno Deploy** — serverless KV-backed orchestrator. Free tier has
+  generous request limits; we use ~1 request per user action.
+* **JarvisLabs** — ₹166/month for 20 GB of paused storage (since we
+  pause between every request) and ~₹0.65 of compute per normalize.
+  No credit card required; pays from a prepaid balance.
+
+Compared to the earlier Lightning AI Studio / Modal / Hugging Face
+attempts, this combination:
+
+* has no auto-stop / wake-up dance — the GPU is paused, not destroyed,
+  when idle;
+* has no credit-card requirement;
+* has no KV cost (the orchestrator's KV is attached to a Deno Deploy
+  free-tier database);
+* has no upload-size limit beyond Deno Deploy's request body buffer
+  (~64 KB without streaming; the frontend caps uploads at 64 KB until
+  we wire up streaming).
 
 ## Cold-start flow
 
-User opens <https://stainkit.404piyush.me/>:
+User opens <https://stainkit.404piyush.me/> and submits an image:
 
-1. Page loads, immediately pings `/healthz`. If studio is asleep, the
-   ping fails silently.
-2. Page renders the upload form. User picks an image and clicks Run.
-3. POST `/normalize` fails. Frontend retries 6 times (~60 s) with
-   "backend is waking up" message.
-4. If still failing after 60 s, error message explains the user can
-   either keep the page open for 60 s and retry, or trigger the
-   `keep-alive` workflow manually at
-   <https://github.com/404Piyush/stainkit/actions/workflows/keep-alive.yml>.
+1. Browser `POST`s the file to the orchestrator's `/api/normalize`.
+2. The orchestrator `GET users/fetch/{id}` and resumes the instance
+   if it isn't already running.
+3. Orchestrator `GET` polls the GPU's `/healthz` until it returns 200
+   (cold A30 takes 20-40 s).
+4. Orchestrator `POST`s the file to the GPU's `/normalize`. The GPU
+   does the Macenko work in ~500 ms.
+5. Orchestrator `POST misc/pause` to pause the GPU (background, so
+   it doesn't block the response).
+6. Orchestrator returns the result (`normalised_b64`, `mask_b64`,
+   `panel_b64`) to the browser. Frontend decodes and displays.
 
-## Waking a stopped studio manually
+User reloads the page five minutes later: the GPU is paused; cold
+start repeats but only the orchestrator's pause→resume cycle is
+involved; the frontend displays progressive status while waiting.
 
-Two ways to restart the backend:
+## Self-healing orchestrator
 
-### Option 1 — GitHub Actions UI
+JarvisLabs sometimes rotates instance IDs between pauses (the new
+instance has the same startup script but a different `machine_id`).
+The orchestrator catches the 404 from `GET users/fetch/{stale_id}`
+and falls back to a `users/fetch` listing, picking the most recent
+A30 instance with our startup script ID — so manual env-var updates
+are not needed for normal operation.
 
-Go to <https://github.com/404Piyush/stainkit/actions/workflows/keep-alive.yml>,
-click "Run workflow". The workflow pings `/healthz` 3 times — the first
-ping triggers Lightning to start the studio (takes ~60 s) and the
-subsequent pings confirm it is healthy.
+## Triggering a manual wake-up
 
-### Option 2 — Lightning CLI
-
-```python
-from lightning_sdk import Studio
-s = Studio(name="stainkit-demo-v2")
-s.start(machine="T4_SMALL")  # ~30-60 s
-```
-
-Then SSH into the studio and start the FastAPI server:
-
-```bash
-cd /teamspace/studios/this_studio/stainkit
-nohup python3 -m uvicorn lightning_app_unified:app \
-  --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
-```
-
-## Why the GitHub Action is manual-only
-
-A scheduled ping every 5 minutes costs ~3 minutes of compute per hour,
-~72 minutes/day, ~36 hours/month — blowing past the 30-hour free
-budget by itself. The frontend ping is free because it only runs
-while the page is open, and only one user (the one trying the demo)
-pays for that compute. As soon as the user closes the tab, the studio
-auto-stops within 5 minutes.
-
-## Build on a fresh studio
-
-The studio image does not ship with CUDA toolkit or `nvcc`, so the
-stainkit binary has to be rebuilt on first start:
+Cold start is automatic. If something gets stuck (for example, the GPU
+instance is destroyed by JarvisLabs and a new one is provisioned):
 
 ```bash
-export PATH=/home/zeus/miniconda3/envs/cloudspace/bin:\
-/home/zeus/miniconda3/envs/cloudspace/lib/python3.12/site-packages/nvidia/cuda_nvcc/bin:\
-/usr/local/cuda/bin:$PATH
-cd /teamspace/studios/this_studio/stainkit
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_ARCHITECTURES=75 -DSTK_BUILD_TESTS=OFF \
-  -DSTK_BUILD_PYTHON=OFF
-make -C build -j2 stainkit
+gh secret set JL_API_KEY --body "<your-token>"
+gh secret set DENO_DEPLOY_TOKEN --body "<your-token>"
+gh workflow run ci.yml --repo 404Piyush/stainkit-orchestrator
 ```
 
-If the conda env doesn't have `nvcc`:
+That redeploys the orchestrator with fresh env vars.
 
-```bash
-conda install -y -c nvidia/label/cuda-12.8.1 \
-  cuda-nvcc cuda-cudart-dev cuda-cccl
-```
+## Why not Modal / HuggingFace Spaces / Railway / Render / Fly?
 
-## Why not Modal / HuggingFace Spaces / Railway?
-
-- **Modal** — free tier caps at $1/month and freezes the remaining
-  $29 in credits until a card is added. The repo's deploy workflow
-  originally targeted Modal; the workflow file has been removed.
-- **HuggingFace Spaces** — ZeroGPU is free but does not allow
-  subprocess execution, so we cannot shell out to the stainkit CLI.
-- **Railway / Render / Fly** — free tiers do not include GPUs.
-
-Lightning AI's free tier is the only no-card option that gives us
-real CUDA access on a T4. The trade-off is the auto-stop behaviour
-documented above.
+* **Modal** — free tier caps at $1/month and freezes the remaining $29
+  in credits until a card is added.
+* **HuggingFace Spaces** — ZeroGPU is free but does not allow subprocess
+  execution, so we cannot shell out to the stainkit CLI.
+* **Railway / Render / Fly** — free tiers do not include GPUs.
+* **Lightning AI Studio** — we used this earlier but the 30 GPU-hr/month
+  budget was too tight for cold-start latency. The orchestrator
+  reference code is kept in commit history for reference but is no
+  longer deployed.

@@ -185,21 +185,36 @@ stainkit/
 │   ├── main.cpp                # CLI entry point
 │   ├── kernels/                # CUDA kernel files (.cu)
 │   ├── benchmarks/             # CPU vs GPU benchmark binary
-│   └── bindings/               # pybind11 module
+│   ├── bindings/               # pybind11 module
+│   └── types.cpp               # POD value types
 ├── tests/                      # GoogleTest suite
 ├── third_party/stb/            # Vendored stb_image
-├── python/gpustain/            # Python wrapper helpers + tests
-├── scripts/                    # Dataset downloaders
-├── docs/                       # Algorithms, API, benchmarks
+├── python/gpustain/            # Python wrapper + tests
+├── lightning_app_unified.py    # FastAPI server for the GPU instance
+├── colab_notebook.ipynb        # End-to-end Colab demo
+├── scripts/                    # Dataset helpers and CSV plotter
+│   ├── download_pcam.py        # PatchCamelyon sample downloader
+│   ├── download_tcga.py        # TCGA WSI downloader (large)
+│   ├── generate_sample_data.py # Synthetic 256² H&E (for benchmarking)
+│   ├── generate_sample_gallery.py  # 6 H&E demo images for the README
+│   ├── benchmark.py            # CSV → bar chart plotter
+│   ├── bundle_proof_of_execution.py  # Tarball for submission
+│   └── setup_colab.sh          # Colab env bootstrap
+├── data/benchmark/             # Pre-baked 256² + 512² benchmark CSVs
+├── docs/                       # Algorithms, API, hosting, screenshots
 ├── .github/workflows/          # CI
 ├── Dockerfile
-├── colab_notebook.ipynb
 ├── install.sh
-├── run.sh
+├── run.sh                      # One-command demo runner
 ├── LICENSE                     # Apache 2.0
 ├── README.md                   # ← you are here
 └── .clang-format               # Google C++ style
 ```
+
+The companion orchestrator at
+[github.com/404Piyush/stainkit-orchestrator](https://github.com/404Piyush/stainkit-orchestrator)
+is a separate Deno Deploy app that pairs with this repo's FastAPI server
+to deliver the live web demo. See [docs/hosting.md](docs/hosting.md).
 
 ---
 
